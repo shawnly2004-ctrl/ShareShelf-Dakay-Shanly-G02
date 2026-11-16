@@ -6,6 +6,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from django.contrib.auth import get_user_model
 from .decorators import role_required
+from .forms import RegisterForm, LoginForm, ProfileForm
 
 from .forms import RegisterForm, LoginForm
 
@@ -75,3 +76,19 @@ def admin_dashboard_view(request):
 @role_required('member')
 def member_dashboard_view(request):
     return render(request, 'accounts/member_dashboard.html')
+
+@login_required
+def profile_view(request):
+    return render(request, 'accounts/profile.html')
+
+
+@login_required
+def profile_edit_view(request):
+    form = ProfileForm(request.POST or None, request.FILES or None, instance=request.user)
+    if request.method == 'POST':
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Profile updated successfully.")
+            return redirect('profile')
+        messages.error(request, "Please fix the errors below.")
+    return render(request, 'accounts/profile_edit.html', {'form': form})
