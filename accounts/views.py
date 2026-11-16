@@ -4,6 +4,8 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
+from django.contrib.auth import get_user_model
+from .decorators import role_required
 
 from .forms import RegisterForm, LoginForm
 
@@ -51,5 +53,25 @@ def logout_view(request):
 
 @login_required
 def dashboard_view(request):
-    # TEMPORARY: replaced by role-based dashboards in Step 3
-    return render(request, 'accounts/dashboard.html')
+    """Router: sends each user to the dashboard for their role."""
+    if request.user.role == 'admin':
+        return redirect('admin_dashboard')
+    return redirect('member_dashboard')
+
+
+@role_required('admin')
+def admin_dashboard_view(request):
+    User = get_user_model()
+    members = User.objects.filter(role='member')
+    context = {
+        'total_users': members.count(),
+        'lenders': members.filter(user_type__in=['lender', 'both']).count(),
+        'borrowers': members.filter(user_type__in=['borrower', 'both']).count(),
+        'recent_users': members.order_by('-date_joined')[:5],
+    }
+    return render(request, 'accounts/admin_dashboard.html', context)
+
+
+@role_required('member')
+def member_dashboard_view(request):
+    return render(request, 'accounts/member_dashboard.html')
