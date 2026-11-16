@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}My Dashboard | ShareShelf{% endblock %}
+
+{% block content %}
+<h3 class="mb-1">Welcome, {{ user.first_name }}!</h3>
+<p class="text-muted mb-4">{{ user.get_user_type_display }} in {{ user.barangay }}</p>
+
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h5>Nearby Items</h5>
+      <p class="text-muted mb-0">Available items will appear here.</p>
+    </div></div>
+  </div>
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h5>Pending Requests</h5>
+      <p class="text-muted mb-0">Borrow requests will appear here.</p>
+    </div></div>
+  </div>
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h5>Borrow / Lend History</h5>
+      <p class="text-muted mb-0">Your transactions will appear here.</p>
+    </div></div>
+  </div>
+</div>
+{% endblock %}
