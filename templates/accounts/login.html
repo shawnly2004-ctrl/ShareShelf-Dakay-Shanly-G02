@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Login | ShareShelf{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h3 class="mb-3">Log in to ShareShelf</h3>
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger py-2">
+              {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+            </div>
+          {% endif %}
+
+          {% for field in form %}
+            <div class="mb-3">
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% for error in field.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+          {% endfor %}
+
+          <button type="submit" class="btn btn-primary w-100">Log in</button>
+        </form>
+        <p class="mt-3 mb-0 text-center">No account yet? <a href="{% url 'register' %}">Register</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

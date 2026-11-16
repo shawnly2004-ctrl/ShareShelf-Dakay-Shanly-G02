@@ -1,4 +1,5 @@
 from django import forms
+from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.password_validation import validate_password
 from .models import User
 
@@ -39,8 +40,27 @@ class RegisterForm(forms.ModelForm):
 
     def save(self, commit=True):
         user = super().save(commit=False)
-        user.set_password(self.cleaned_data['password1'])  # hashed
-        user.role = 'member'   # never from the form, so nobody can self-register as admin
+        user.set_password(self.cleaned_data['password1'])
+        user.role = 'member'
         if commit:
             user.save()
         return user
+
+
+class LoginForm(AuthenticationForm):
+    username = forms.EmailField(
+        label="Email",
+        widget=forms.EmailInput(attrs={'class': 'form-control', 'autofocus': True})
+    )
+    password = forms.CharField(
+        label="Password",
+        widget=forms.PasswordInput(attrs={'class': 'form-control'})
+    )
+
+    error_messages = {
+        'invalid_login': "Invalid email or password. Please try again.",
+        'inactive': "This account is inactive.",
+    }
+
+    def clean_username(self):
+        return self.cleaned_data['username'].lower().strip()
