@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block title %}My Profile | ShareShelf{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <div class="d-flex align-items-center mb-4">
+          {% if user.profile_photo %}
+            <img src="{{ user.profile_photo.url }}" alt="Profile photo"
+                 class="rounded-circle me-3" style="width:90px;height:90px;object-fit:cover;">
+          {% else %}
+            <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center me-3"
+                 style="width:90px;height:90px;font-size:2rem;">
+              {{ user.first_name|slice:":1"|upper }}{{ user.last_name|slice:":1"|upper }}
+            </div>
+          {% endif %}
+          <div>
+            <h4 class="mb-0">{{ user.first_name }} {{ user.last_name }}</h4>
+            <span class="badge bg-dark">{{ user.get_role_display }}</span>
+            <span class="badge bg-info text-dark">{{ user.get_user_type_display }}</span>
+          </div>
+        </div>
+
+        <table class="table table-borderless mb-3">
+          <tr><th style="width:35%">Email</th><td>{{ user.email }}</td></tr>
+          <tr><th>Contact number</th><td>{{ user.contact_number|default:"Not set" }}</td></tr>
+          <tr><th>Barangay</th><td>{{ user.barangay|default:"Not set" }}</td></tr>
+          <tr><th>Member since</th><td>{{ user.date_joined|date:"M d, Y" }}</td></tr>
+        </table>
+
+        <a href="{% url 'profile_edit' %}" class="btn btn-primary">Edit profile</a>
+        <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">Back</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

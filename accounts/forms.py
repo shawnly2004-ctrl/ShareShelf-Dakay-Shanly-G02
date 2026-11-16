@@ -64,3 +64,32 @@ class LoginForm(AuthenticationForm):
 
     def clean_username(self):
         return self.cleaned_data['username'].lower().strip()
+
+
+class ProfileForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ['first_name', 'last_name', 'email', 'contact_number',
+                  'barangay', 'user_type', 'profile_photo']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in ['first_name', 'last_name', 'email', 'barangay']:
+            self.fields[name].required = True
+        for name, field in self.fields.items():
+            field.widget.attrs['class'] = 'form-control'
+            if name == 'profile_photo':
+                field.widget.attrs['accept'] = 'image/*'
+
+    def clean_email(self):
+        email = self.cleaned_data['email'].lower().strip()
+        # Exclude the current user, otherwise saving without changing email fails
+        if User.objects.filter(email__iexact=email).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError("Another account already uses this email.")
+        return email
+
+    def clean_profile_photo(self):
+        photo = self.cleaned_data.get('profile_photo')
+        if photo and hasattr(photo, 'size') and photo.size > 2 * 1024 * 1024:
+            raise forms.ValidationError("Image must be 2 MB or smaller.")
+        return photo
