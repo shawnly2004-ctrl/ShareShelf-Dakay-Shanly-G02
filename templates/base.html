@@ -19,7 +19,7 @@
         <ul class="navbar-nav me-auto">
       {% if user.role == 'admin' %}
          <li class="nav-item"><a class="nav-link" href="{% url 'admin_dashboard' %}">Admin Dashboard</a></li>
-        <li class="nav-item"><a class="nav-link disabled" href="#">Manage Users</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'manage_users' %}">Manage Users</a></li>
         <li class="nav-item"><a class="nav-link disabled" href="#">All Items</a></li>
       {% else %}
         <li class="nav-item"><a class="nav-link" href="{% url 'member_dashboard' %}">My Dashboard</a></li>

@@ -7,6 +7,9 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth import get_user_model
 from .decorators import role_required
 from .forms import RegisterForm, LoginForm, ProfileForm
+from django.core.paginator import Paginator
+from django.db.models import Q
+from django.shortcuts import get_object_or_404
 
 from .forms import RegisterForm, LoginForm
 
@@ -92,3 +95,53 @@ def profile_edit_view(request):
             return redirect('profile')
         messages.error(request, "Please fix the errors below.")
     return render(request, 'accounts/profile_edit.html', {'form': form})
+
+
+@role_required('admin')
+def manage_users_view(request):
+    User = get_user_model()
+    users = User.objects.filter(role='member').order_by('-date_joined')
+
+    q = request.GET.get('q', '').strip()
+    status = request.GET.get('status', '')
+    user_type = request.GET.get('type', '')
+
+    if q:
+        users = users.filter(
+            Q(first_name__icontains=q) | Q(last_name__icontains=q) |
+            Q(email__icontains=q) | Q(barangay__icontains=q)
+        )
+    if status == 'active':
+        users = users.filter(is_active=True)
+    elif status == 'inactive':
+        users = users.filter(is_active=False)
+    if user_type in ('lender', 'borrower', 'both'):
+        users = users.filter(user_type=user_type)
+
+    page_obj = Paginator(users, 10).get_page(request.GET.get('page'))
+
+    # Keep the search/filters when moving between pages
+    params = request.GET.copy()
+    params.pop('page', None)
+
+    return render(request, 'accounts/manage_users.html', {
+        'page_obj': page_obj,
+        'q': q,
+        'status': status,
+        'user_type': user_type,
+        'querystring': params.urlencode(),
+    })
+
+
+@role_required('admin')
+@require_POST
+def toggle_user_status_view(request, user_id):
+    User = get_user_model()
+    # Only members can be targeted, so an admin can't deactivate themselves or other admins
+    target = get_object_or_404(User, pk=user_id, role='member')
+    target.is_active = not target.is_active
+    target.save(update_fields=['is_active'])
+
+    state = "activated" if target.is_active else "deactivated"
+    messages.success(request, f"{target.email} has been {state}.")
+    return redirect('manage_users')
