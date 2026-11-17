@@ -24,10 +24,11 @@
         {% for item in page_obj %}
         <tr>
           <td><a href="{% url 'item_detail' item.pk %}">{{ item.name }}</a></td>
-          <td>{{ item.get_category_display }}</td>
+          <td>{{ item.category.name }}</td>
           <td>{{ item.owner.email }}</td>
           <td>
-            {% if not item.is_available %}<span class="badge bg-secondary">Paused</span>
+            {% if item.status == 'unlisted' %}<span class="badge bg-secondary">Unlisted</span>
+            {% elif item.status == 'on_loan' %}<span class="badge bg-warning text-dark">On loan</span>
             {% elif item.is_open_now %}<span class="badge bg-success">Available</span>
             {% else %}<span class="badge bg-warning text-dark">Outside window</span>{% endif %}
           </td>

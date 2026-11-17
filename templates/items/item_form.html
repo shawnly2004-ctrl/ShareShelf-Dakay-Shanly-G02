@@ -3,26 +3,116 @@
 
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-md-7">
+  <div class="col-md-8">
     <div class="card shadow-sm">
       <div class="card-body p-4">
         <h3 class="mb-3">{{ title }}</h3>
         <form method="post" enctype="multipart/form-data" novalidate>
           {% csrf_token %}
+
           {% for field in form %}
             <div class="mb-3">
               <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
               {{ field }}
-              {% for error in field.errors %}
-                <div class="text-danger small">{{ error }}</div>
-              {% endfor %}
+              {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
             </div>
           {% endfor %}
-          <button type="submit" class="btn btn-primary">Save</button>
-          <a href="{% url 'my_items' %}" class="btn btn-outline-secondary">Cancel</a>
+
+          {% if item and item.photos.all %}
+          <div class="mb-3">
+            <label class="form-label">Current photos</label>
+            <div class="row g-2">
+              {% for photo in item.photos.all %}
+              <div class="col-4 col-md-3">
+                <div class="border rounded p-1 text-center">
+                  <img src="{{ photo.image.url }}" class="img-fluid rounded mb-1"
+                       style="height:80px;object-fit:cover;" alt="{{ item.name }}">
+                  <div class="form-check small text-start">
+                    <input class="form-check-input" type="radio" name="primary_photo"
+                           value="{{ photo.pk }}" id="pp{{ photo.pk }}"
+                           {% if photo.is_primary %}checked{% endif %}>
+                    <label class="form-check-label" for="pp{{ photo.pk }}">Cover</label>
+                  </div>
+                  <div class="form-check small text-start">
+                    <input class="form-check-input" type="checkbox" name="delete_photos"
+                           value="{{ photo.pk }}" id="dp{{ photo.pk }}">
+                    <label class="form-check-label text-danger" for="dp{{ photo.pk }}">Remove</label>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
+          <hr>
+          <h5>Availability windows</h5>
+          <p class="text-muted small">Add one or more date ranges when this item can be borrowed.</p>
+
+          {% for error in formset.non_form_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+          {{ formset.management_form }}
+
+          <div id="windows">
+            {% for window_form in formset %}
+            <div class="window-row row g-2 mb-2 align-items-start">
+              {% for hidden in window_form.hidden_fields %}{{ hidden }}{% endfor %}
+              <div class="col-5">
+                {{ window_form.start_date }}
+                {% for error in window_form.start_date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-5">
+                {{ window_form.end_date }}
+                {% for error in window_form.end_date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-2">
+                {% if window_form.instance.pk %}
+                  <div class="form-check pt-2">
+                    {{ window_form.DELETE }}
+                    <label class="form-check-label small text-danger" for="{{ window_form.DELETE.id_for_label }}">Remove</label>
+                  </div>
+                {% endif %}
+              </div>
+              {% for error in window_form.non_field_errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            {% endfor %}
+          </div>
+          <button type="button" id="add-window" class="btn btn-sm btn-outline-secondary mb-4">+ Add another window</button>
+
+          <div>
+            <button type="submit" class="btn btn-primary">Save</button>
+            <a href="{% url 'my_items' %}" class="btn btn-outline-secondary">Cancel</a>
+          </div>
         </form>
       </div>
     </div>
   </div>
 </div>
+
+<template id="empty-window">
+  <div class="window-row row g-2 mb-2 align-items-start">
+    {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+    <div class="col-5">{{ formset.empty_form.start_date }}</div>
+    <div class="col-5">{{ formset.empty_form.end_date }}</div>
+    <div class="col-2">
+      <button type="button" class="btn btn-sm btn-outline-danger remove-window">&times;</button>
+    </div>
+  </div>
+</template>
+
+<script>
+  const total = document.getElementById('id_windows-TOTAL_FORMS');
+  document.getElementById('add-window').addEventListener('click', () => {
+    const index = parseInt(total.value, 10);
+    const html = document.getElementById('empty-window').innerHTML.replaceAll('__prefix__', index);
+    document.getElementById('windows').insertAdjacentHTML('beforeend', html);
+    total.value = index + 1;
+  });
+  document.getElementById('windows').addEventListener('click', (event) => {
+    if (event.target.classList.contains('remove-window')) {
+      const row = event.target.closest('.window-row');
+      row.querySelectorAll('input[type=date]').forEach(input => input.value = '');
+      row.style.display = 'none';
+    }
+  });
+</script>
 {% endblock %}

@@ -20,14 +20,22 @@
   {% for item in items %}
   <div class="col-md-4">
     <div class="card shadow-sm h-100">
-      <img src="{{ item.photo.url }}" class="card-img-top" alt="{{ item.name }}"
-           style="height:180px;object-fit:cover;">
+      {% with photo=item.primary_photo %}
+        {% if photo %}
+          <img src="{{ photo.image.url }}" class="card-img-top" alt="{{ item.name }}"
+               style="height:180px;object-fit:cover;">
+        {% else %}
+          <div class="bg-secondary" style="height:180px;"></div>
+        {% endif %}
+      {% endwith %}
       <div class="card-body">
         <h5 class="card-title mb-1">{{ item.name }}</h5>
         <div class="mb-2">
-          <span class="badge bg-info text-dark">{{ item.get_category_display }}</span>
-          {% if not item.is_available %}
-            <span class="badge bg-secondary">Paused</span>
+          <span class="badge bg-info text-dark">{{ item.category.name }}</span>
+          {% if item.status == 'unlisted' %}
+            <span class="badge bg-secondary">Unlisted</span>
+          {% elif item.status == 'on_loan' %}
+            <span class="badge bg-warning text-dark">On loan</span>
           {% elif item.is_open_now %}
             <span class="badge bg-success">Available</span>
           {% else %}
@@ -35,7 +43,12 @@
           {% endif %}
         </div>
         <p class="small text-muted mb-0">
-          {{ item.available_from|date:"M d" }} to {{ item.available_until|date:"M d, Y" }}
+          {% with window=item.next_window %}
+            {% if window %}Next: {{ window.start_date|date:"M d" }} to {{ window.end_date|date:"M d, Y" }}{% else %}No upcoming window{% endif %}
+          {% endwith %}
+          {% with windows=item.windows.all %}
+            {% if windows|length > 1 %}(+{{ windows|length|add:"-1" }} more){% endif %}
+          {% endwith %}
         </p>
       </div>
       <div class="card-footer bg-white d-flex gap-1">
@@ -44,7 +57,7 @@
         <form method="post" action="{% url 'item_toggle' item.pk %}">
           {% csrf_token %}
           <button class="btn btn-sm btn-outline-warning">
-            {% if item.is_available %}Pause{% else %}Resume{% endif %}
+            {% if item.status == 'available' %}Unlist{% else %}List{% endif %}
           </button>
         </form>
         <form method="post" action="{% url 'item_delete' item.pk %}"

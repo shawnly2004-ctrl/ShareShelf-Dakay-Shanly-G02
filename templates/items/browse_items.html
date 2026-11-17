@@ -6,16 +6,19 @@
 
 <form method="get" class="card shadow-sm mb-3">
   <div class="card-body row g-2">
-    <div class="col-md-6">
-      <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search items (e.g. drill, ladder)">
-    </div>
     <div class="col-md-4">
+      <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search items">
+    </div>
+    <div class="col-md-3">
       <select name="category" class="form-select">
         <option value="">All categories</option>
-        {% for value, label in categories %}
-          <option value="{{ value }}" {% if category == value %}selected{% endif %}>{{ label }}</option>
+        {% for category_option in categories %}
+          <option value="{{ category_option.pk }}" {% if category == category_option.pk|stringformat:"s" %}selected{% endif %}>{{ category_option.name }}</option>
         {% endfor %}
       </select>
+    </div>
+    <div class="col-md-3">
+      <input type="date" name="date" value="{{ date }}" class="form-control" title="Available on this date">
     </div>
     <div class="col-md-2 d-grid"><button class="btn btn-primary">Search</button></div>
   </div>
@@ -25,13 +28,21 @@
   {% for item in page_obj %}
   <div class="col-md-4">
     <div class="card shadow-sm h-100">
-      <img src="{{ item.photo.url }}" class="card-img-top" alt="{{ item.name }}" style="height:180px;object-fit:cover;">
+      {% with photo=item.primary_photo %}
+        {% if photo %}
+          <img src="{{ photo.image.url }}" class="card-img-top" alt="{{ item.name }}" style="height:180px;object-fit:cover;">
+        {% else %}
+          <div class="bg-secondary" style="height:180px;"></div>
+        {% endif %}
+      {% endwith %}
       <div class="card-body">
         <h5 class="card-title mb-1">{{ item.name }}</h5>
-        <span class="badge bg-info text-dark">{{ item.get_category_display }}</span>
+        <span class="badge bg-info text-dark">{{ item.category.name }}</span>
         <p class="small text-muted mt-2 mb-0">
           {{ item.owner.first_name }} · {{ item.owner.barangay|default:"-" }}<br>
-          Available {{ item.available_from|date:"M d" }} to {{ item.available_until|date:"M d, Y" }}
+          {% with window=item.next_window %}
+            {% if window %}Next: {{ window.start_date|date:"M d" }} to {{ window.end_date|date:"M d, Y" }}{% else %}No upcoming window{% endif %}
+          {% endwith %}
         </p>
       </div>
       <div class="card-footer bg-white">

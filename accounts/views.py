@@ -75,7 +75,7 @@ def admin_dashboard_view(request):
         'borrowers': members.filter(user_type__in=['borrower', 'both']).count(),
         'total_items': Item.objects.count(),
         'recent_users': members.order_by('-date_joined')[:5],
-        'recent_items': Item.objects.select_related('owner')[:5],
+        'recent_items': Item.objects.select_related('owner', 'category')[:5],
     }
     return render(request, 'accounts/admin_dashboard.html', context)
 
@@ -86,15 +86,21 @@ def member_dashboard_view(request):
     my_items = Item.objects.filter(owner=request.user)
     nearby = (Item.objects
               .filter(
-                  is_available=True,
-                  available_until__gte=today,
+                  status='available',
+                  windows__end_date__gte=today,
                   owner__community=request.user.community,
               )
               .exclude(owner=request.user)
-              .select_related('owner')[:6])
+              .select_related('owner')
+              .prefetch_related('photos')
+              .distinct()[:6])
     return render(request, 'accounts/member_dashboard.html', {
         'my_items_count': my_items.count(),
-        'my_active_count': my_items.filter(is_available=True).count(),
+        'my_active_count': my_items.filter(
+            status='available',
+            windows__start_date__lte=today,
+            windows__end_date__gte=today,
+        ).distinct().count(),
         'nearby_items': nearby,
     })
 
