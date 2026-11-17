@@ -12,6 +12,8 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404
 
 from .forms import RegisterForm, LoginForm
+from django.utils import timezone
+from items.models import Item
 
 
 def register_view(request):
@@ -71,14 +73,26 @@ def admin_dashboard_view(request):
         'total_users': members.count(),
         'lenders': members.filter(user_type__in=['lender', 'both']).count(),
         'borrowers': members.filter(user_type__in=['borrower', 'both']).count(),
+        'total_items': Item.objects.count(),
         'recent_users': members.order_by('-date_joined')[:5],
+        'recent_items': Item.objects.select_related('owner')[:5],
     }
     return render(request, 'accounts/admin_dashboard.html', context)
 
 
 @role_required('member')
 def member_dashboard_view(request):
-    return render(request, 'accounts/member_dashboard.html')
+    today = timezone.localdate()
+    my_items = Item.objects.filter(owner=request.user)
+    nearby = (Item.objects
+              .filter(is_available=True, available_until__gte=today)
+              .exclude(owner=request.user)
+              .select_related('owner')[:6])
+    return render(request, 'accounts/member_dashboard.html', {
+        'my_items_count': my_items.count(),
+        'my_active_count': my_items.filter(is_available=True).count(),
+        'nearby_items': nearby,
+    })
 
 @login_required
 def profile_view(request):

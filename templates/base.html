@@ -20,10 +20,10 @@
       {% if user.role == 'admin' %}
          <li class="nav-item"><a class="nav-link" href="{% url 'admin_dashboard' %}">Admin Dashboard</a></li>
         <li class="nav-item"><a class="nav-link" href="{% url 'manage_users' %}">Manage Users</a></li>
-        <li class="nav-item"><a class="nav-link disabled" href="#">All Items</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'admin_items' %}">All Items</a></li>
       {% else %}
         <li class="nav-item"><a class="nav-link" href="{% url 'member_dashboard' %}">My Dashboard</a></li>
-        <li class="nav-item"><a class="nav-link disabled" href="#">Browse Items</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'browse_items' %}">Browse Items</a></li>
         <li class="nav-item"><a class="nav-link" href="{% url 'my_items' %}">My Items</a></li>
       {% endif %}
         <li class="nav-item"><a class="nav-link" href="{% url 'profile' %}">Profile</a></li>
