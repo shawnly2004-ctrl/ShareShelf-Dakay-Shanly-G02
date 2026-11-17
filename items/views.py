@@ -10,8 +10,8 @@ from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
 from accounts.decorators import role_required
-from .forms import ItemForm, WindowFormSet
-from .models import Category, Item, ItemPhoto
+from .forms import BorrowRequestForm, ItemForm, WindowFormSet
+from .models import BorrowRequest, Category, Item, ItemPhoto
 
 
 def _can_lend(user):
@@ -143,8 +143,10 @@ def item_toggle_view(request, pk):
 @require_POST
 def item_delete_view(request, pk):
     item = get_object_or_404(Item, pk=pk, owner=request.user)
-    if item.status == 'on_loan':
-        messages.error(request, "This item is on loan and can't be deleted.")
+    if item.status == 'on_loan' or item.requests.filter(
+        status__in=BorrowRequest.BLOCKING_STATUSES,
+    ).exists():
+        messages.error(request, "This item has an active loan and can't be deleted.")
         return redirect('my_items')
     name = item.name
     item.delete()
@@ -221,3 +223,146 @@ def admin_item_delete_view(request, pk):
     item.delete()
     messages.success(request, f'"{name}" was removed by the admin.')
     return redirect('admin_items')
+
+
+@role_required('member')
+def request_create_view(request, pk):
+    BorrowRequest.expire_stale()
+    item = get_object_or_404(
+        Item.objects.select_related('owner', 'category').prefetch_related('windows'),
+        pk=pk,
+    )
+
+    if item.owner.community_id != request.user.community_id:
+        raise Http404
+    if item.owner_id == request.user.id:
+        messages.error(request, "You can't borrow your own item.")
+        return redirect('item_detail', pk=item.pk)
+    if request.user.user_type == 'lender':
+        messages.error(
+            request,
+            "Lenders can't borrow. Change your type to Borrower or Both in your profile.",
+        )
+        return redirect('profile_edit')
+    if BorrowRequest.objects.filter(borrower=request.user, status='overdue').exists():
+        messages.error(request, "You have an overdue item. Return it before requesting another.")
+        return redirect('my_requests')
+    if (item.status != 'available'
+            or not any(window.end_date >= timezone.localdate() for window in item.windows.all())):
+        messages.error(request, "This item isn't available for borrowing right now.")
+        return redirect('item_detail', pk=item.pk)
+
+    form = BorrowRequestForm(request.POST or None, item=item, borrower=request.user)
+    if request.method == 'POST':
+        if form.is_valid():
+            borrow_request = form.save(commit=False)
+            borrow_request.item = item
+            borrow_request.borrower = request.user
+            borrow_request.save()
+            messages.success(
+                request,
+                f'Request sent to {item.owner.first_name} for "{item.name}".',
+            )
+            return redirect('my_requests')
+        messages.error(request, "Please fix the errors below.")
+    return render(request, 'items/request_form.html', {'form': form, 'item': item})
+
+
+@role_required('member')
+def my_requests_view(request):
+    BorrowRequest.expire_stale()
+    requests = (BorrowRequest.objects.filter(borrower=request.user)
+                .select_related('item', 'item__owner'))
+    return render(request, 'items/my_requests.html', {'requests': requests})
+
+
+@role_required('member')
+def incoming_requests_view(request):
+    BorrowRequest.expire_stale()
+    requests = (BorrowRequest.objects.filter(item__owner=request.user)
+                .select_related('item', 'borrower'))
+    return render(request, 'items/incoming_requests.html', {'requests': requests})
+
+
+@role_required('member')
+@require_POST
+def request_respond_view(request, pk):
+    BorrowRequest.expire_stale()
+    action = request.POST.get('action')
+    if action not in ('approve', 'decline'):
+        messages.error(request, "Invalid action.")
+        return redirect('incoming_requests')
+
+    with transaction.atomic():
+        borrow_request = get_object_or_404(
+            BorrowRequest.objects.select_related('item', 'borrower'),
+            pk=pk,
+            item__owner=request.user,
+        )
+        Item.objects.select_for_update().get(pk=borrow_request.item_id)
+        borrow_request.refresh_from_db()
+
+        if borrow_request.status != 'pending':
+            messages.error(request, "This request is no longer pending.")
+            return redirect('incoming_requests')
+
+        now = timezone.now()
+        if action == 'approve':
+            if borrow_request.overlapping_blocking().exists():
+                messages.error(
+                    request,
+                    "Can't approve: these dates overlap with another approved loan.",
+                )
+                return redirect('incoming_requests')
+            borrow_request.status = 'approved'
+            borrow_request.decided_at = now
+            borrow_request.save(update_fields=['status', 'decided_at'])
+            BorrowRequest.objects.filter(
+                item=borrow_request.item,
+                status='pending',
+                start_date__lte=borrow_request.end_date,
+                end_date__gte=borrow_request.start_date,
+            ).exclude(pk=borrow_request.pk).update(status='declined', decided_at=now)
+        else:
+            borrow_request.status = 'declined'
+            borrow_request.decided_at = now
+            borrow_request.save(update_fields=['status', 'decided_at'])
+
+    messages.success(
+        request,
+        f"Request from {borrow_request.borrower.first_name} was {borrow_request.status}.",
+    )
+    return redirect('incoming_requests')
+
+
+@role_required('member')
+@require_POST
+def request_cancel_view(request, pk):
+    borrow_request = get_object_or_404(
+        BorrowRequest,
+        pk=pk,
+        borrower=request.user,
+        status__in=['pending', 'approved'],
+    )
+    borrow_request.status = 'cancelled'
+    borrow_request.save(update_fields=['status'])
+    messages.success(request, "Your request was cancelled.")
+    return redirect('my_requests')
+
+
+@role_required('admin')
+def admin_requests_view(request):
+    BorrowRequest.expire_stale()
+    requests = BorrowRequest.objects.select_related('item', 'borrower', 'item__owner')
+    status = request.GET.get('status', '')
+    if status in dict(BorrowRequest.STATUS_CHOICES):
+        requests = requests.filter(status=status)
+    page_obj = Paginator(requests, 10).get_page(request.GET.get('page'))
+    params = request.GET.copy()
+    params.pop('page', None)
+    return render(request, 'items/admin_requests.html', {
+        'page_obj': page_obj,
+        'status': status,
+        'statuses': BorrowRequest.STATUS_CHOICES,
+        'querystring': params.urlencode(),
+    })

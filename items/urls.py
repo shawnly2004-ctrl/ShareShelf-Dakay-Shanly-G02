@@ -11,4 +11,10 @@ urlpatterns = [
     path('items/browse/', views.browse_items_view, name='browse_items'),
     path('items/admin/', views.admin_items_view, name='admin_items'),
     path('items/admin/<int:pk>/delete/', views.admin_item_delete_view, name='admin_item_delete'),
+    path('items/<int:pk>/request/', views.request_create_view, name='request_create'),
+    path('requests/mine/', views.my_requests_view, name='my_requests'),
+    path('requests/incoming/', views.incoming_requests_view, name='incoming_requests'),
+    path('requests/<int:pk>/respond/', views.request_respond_view, name='request_respond'),
+    path('requests/<int:pk>/cancel/', views.request_cancel_view, name='request_cancel'),
+    path('requests/admin/', views.admin_requests_view, name='admin_requests'),
 ]

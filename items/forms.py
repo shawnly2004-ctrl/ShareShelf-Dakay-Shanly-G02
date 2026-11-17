@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.forms import BaseInlineFormSet, inlineformset_factory
 from django.utils import timezone
 
-from .models import AvailabilityWindow, Item
+from .models import AvailabilityWindow, BorrowRequest, Item
 
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 ALLOWED_EXT = {'.jpg', '.jpeg', '.png'}
@@ -124,3 +124,74 @@ WindowFormSet = inlineformset_factory(
     extra=1,
     can_delete=True,
 )
+
+MAX_ACTIVE_REQUESTS = 3
+MAX_LOAN_DAYS = 7
+
+
+class BorrowRequestForm(forms.ModelForm):
+    class Meta:
+        model = BorrowRequest
+        fields = ['start_date', 'end_date', 'message']
+        widgets = {
+            'start_date': forms.DateInput(attrs={'type': 'date'}),
+            'end_date': forms.DateInput(attrs={'type': 'date'}),
+            'message': forms.Textarea(attrs={
+                'rows': 3,
+                'maxlength': 255,
+                'placeholder': 'Optional: what do you need it for?',
+            }),
+        }
+
+    def __init__(self, *args, item=None, borrower=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.item = item
+        self.borrower = borrower
+        for field in self.fields.values():
+            field.widget.attrs['class'] = 'form-control'
+
+    def clean(self):
+        cleaned = super().clean()
+        start = cleaned.get('start_date')
+        end = cleaned.get('end_date')
+        if not (start and end):
+            return cleaned
+
+        if start < timezone.localdate():
+            self.add_error('start_date', "Start date can't be in the past.")
+            return cleaned
+        if end < start:
+            self.add_error('end_date', "End date can't be before the start date.")
+            return cleaned
+        if (end - start).days > MAX_LOAN_DAYS:
+            raise ValidationError(f"A loan can last at most {MAX_LOAN_DAYS} days.")
+        if not any(
+            window.start_date <= start and end <= window.end_date
+            for window in self.item.windows.all()
+        ):
+            raise ValidationError(
+                "Your dates must fall entirely inside one of the item's availability windows."
+            )
+        if BorrowRequest.objects.filter(
+            item=self.item,
+            status__in=BorrowRequest.BLOCKING_STATUSES,
+            start_date__lte=end,
+            end_date__gte=start,
+        ).exists():
+            raise ValidationError("Those dates overlap with an approved loan. Pick other dates.")
+        if BorrowRequest.objects.filter(
+            item=self.item,
+            borrower=self.borrower,
+            status='pending',
+        ).exists():
+            raise ValidationError("You already have a pending request for this item.")
+
+        active_requests = BorrowRequest.objects.filter(
+            borrower=self.borrower,
+            status__in=BorrowRequest.ACTIVE_STATUSES,
+        ).count()
+        if active_requests >= MAX_ACTIVE_REQUESTS:
+            raise ValidationError(
+                f"You can have at most {MAX_ACTIVE_REQUESTS} active requests at a time."
+            )
+        return cleaned
