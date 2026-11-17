@@ -8,4 +8,7 @@ urlpatterns = [
     path('items/<int:pk>/edit/', views.item_edit_view, name='item_edit'),
     path('items/<int:pk>/toggle/', views.item_toggle_view, name='item_toggle'),
     path('items/<int:pk>/delete/', views.item_delete_view, name='item_delete'),
+    path('items/browse/', views.browse_items_view, name='browse_items'),
+    path('items/admin/', views.admin_items_view, name='admin_items'),
+    path('items/admin/<int:pk>/delete/', views.admin_item_delete_view, name='admin_item_delete'),
 ]
