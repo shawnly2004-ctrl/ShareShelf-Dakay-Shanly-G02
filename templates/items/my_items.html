@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% block title %}My Items | ShareShelf{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">My Items</h3>
+  {% if can_lend %}
+    <a href="{% url 'item_create' %}" class="btn btn-primary">+ List an item</a>
+  {% endif %}
+</div>
+
+{% if not can_lend %}
+  <div class="alert alert-info">
+    You're registered as a <strong>Borrower</strong>. To list items, change your type to
+    Lender or Both in your <a href="{% url 'profile_edit' %}">profile</a>.
+  </div>
+{% endif %}
+
+<div class="row g-3">
+  {% for item in items %}
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <img src="{{ item.photo.url }}" class="card-img-top" alt="{{ item.name }}"
+           style="height:180px;object-fit:cover;">
+      <div class="card-body">
+        <h5 class="card-title mb-1">{{ item.name }}</h5>
+        <div class="mb-2">
+          <span class="badge bg-info text-dark">{{ item.get_category_display }}</span>
+          {% if not item.is_available %}
+            <span class="badge bg-secondary">Paused</span>
+          {% elif item.is_open_now %}
+            <span class="badge bg-success">Available</span>
+          {% else %}
+            <span class="badge bg-warning text-dark">Outside window</span>
+          {% endif %}
+        </div>
+        <p class="small text-muted mb-0">
+          {{ item.available_from|date:"M d" }} to {{ item.available_until|date:"M d, Y" }}
+        </p>
+      </div>
+      <div class="card-footer bg-white d-flex gap-1">
+        <a href="{% url 'item_detail' item.pk %}" class="btn btn-sm btn-outline-primary">View</a>
+        <a href="{% url 'item_edit' item.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+        <form method="post" action="{% url 'item_toggle' item.pk %}">
+          {% csrf_token %}
+          <button class="btn btn-sm btn-outline-warning">
+            {% if item.is_available %}Pause{% else %}Resume{% endif %}
+          </button>
+        </form>
+        <form method="post" action="{% url 'item_delete' item.pk %}"
+              onsubmit="return confirm('Delete this item permanently?');">
+          {% csrf_token %}
+          <button class="btn btn-sm btn-outline-danger">Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="col-12">
+    <div class="card shadow-sm"><div class="card-body text-center text-muted py-5">
+      You haven't listed any items yet.
+    </div></div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
