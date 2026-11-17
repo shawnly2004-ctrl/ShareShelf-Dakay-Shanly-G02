@@ -1,3 +1,6 @@
+from dataclasses import field
+from os import name
+
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.password_validation import validate_password
@@ -11,14 +14,17 @@ class RegisterForm(forms.ModelForm):
     class Meta:
         model = User
         fields = ['first_name', 'last_name', 'email', 'contact_number',
-                  'barangay', 'user_type']
+          'community', 'user_type']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for name in ['first_name', 'last_name', 'email', 'barangay']:
+        for name in ['first_name', 'last_name', 'email', 'community']:
             self.fields[name].required = True
-        for field in self.fields.values():
-            field.widget.attrs['class'] = 'form-control'
+        for name, field in self.fields.items():
+            css = 'form-select' if isinstance(field.widget, forms.Select) else 'form-control'
+            field.widget.attrs['class'] = css
+            if name == 'profile_photo':
+                field.widget.attrs['accept'] = 'image/*'
 
     def clean_email(self):
         email = self.cleaned_data['email'].lower().strip()
@@ -70,14 +76,15 @@ class ProfileForm(forms.ModelForm):
     class Meta:
         model = User
         fields = ['first_name', 'last_name', 'email', 'contact_number',
-                  'barangay', 'user_type', 'profile_photo']
+          'community', 'user_type', 'profile_photo']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for name in ['first_name', 'last_name', 'email', 'barangay']:
+        for name in ['first_name', 'last_name', 'email', 'community']:
             self.fields[name].required = True
         for name, field in self.fields.items():
-            field.widget.attrs['class'] = 'form-control'
+            css = 'form-select' if isinstance(field.widget, forms.Select) else 'form-control'
+            field.widget.attrs['class'] = css
             if name == 'profile_photo':
                 field.widget.attrs['accept'] = 'image/*'
 

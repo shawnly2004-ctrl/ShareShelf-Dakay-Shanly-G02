@@ -85,7 +85,11 @@ def member_dashboard_view(request):
     today = timezone.localdate()
     my_items = Item.objects.filter(owner=request.user)
     nearby = (Item.objects
-              .filter(is_available=True, available_until__gte=today)
+              .filter(
+                  is_available=True,
+                  available_until__gte=today,
+                  owner__community=request.user.community,
+              )
               .exclude(owner=request.user)
               .select_related('owner')[:6])
     return render(request, 'accounts/member_dashboard.html', {
@@ -123,7 +127,7 @@ def manage_users_view(request):
     if q:
         users = users.filter(
             Q(first_name__icontains=q) | Q(last_name__icontains=q) |
-            Q(email__icontains=q) | Q(barangay__icontains=q)
+            Q(email__icontains=q) | Q(community__name__icontains=q)
         )
     if status == 'active':
         users = users.filter(is_active=True)
