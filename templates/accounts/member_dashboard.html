@@ -20,13 +20,23 @@
   <div class="col-md-4">
     <div class="card shadow-sm h-100"><div class="card-body">
       <h5>Pending Requests</h5>
-      <p class="text-muted mb-0">Borrow requests will appear here.</p>
+      <p class="mb-1"><strong>{{ incoming_pending }}</strong> waiting for your approval</p>
+      <p class="mb-2"><strong>{{ my_pending }}</strong> of your requests awaiting a reply</p>
+      <a href="{% url 'incoming_requests' %}" class="btn btn-sm btn-outline-primary">Incoming</a>
+      <a href="{% url 'my_requests' %}" class="btn btn-sm btn-outline-secondary">My requests</a>
     </div></div>
   </div>
   <div class="col-md-4">
     <div class="card shadow-sm h-100"><div class="card-body">
       <h5>Borrow / Lend History</h5>
-      <p class="text-muted mb-0">Your transactions will appear here.</p>
+      {% for r in history %}
+        <div class="small mb-1">
+          {% if r.borrower_id == user.id %}Borrowing{% else %}Lending{% endif %}
+          <strong>{{ r.item.name }}</strong> {% include 'items/_status_badge.html' %}
+        </div>
+      {% empty %}
+        <p class="text-muted mb-0">No activity yet.</p>
+      {% endfor %}
     </div></div>
   </div>
 </div>

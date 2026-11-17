@@ -13,7 +13,7 @@ from django.shortcuts import get_object_or_404
 
 from .forms import RegisterForm, LoginForm
 from django.utils import timezone
-from items.models import Item
+from items.models import BorrowRequest, Item
 
 
 def register_view(request):
@@ -67,6 +67,7 @@ def dashboard_view(request):
 
 @role_required('admin')
 def admin_dashboard_view(request):
+    BorrowRequest.expire_stale()
     User = get_user_model()
     members = User.objects.filter(role='member')
     context = {
@@ -74,6 +75,8 @@ def admin_dashboard_view(request):
         'lenders': members.filter(user_type__in=['lender', 'both']).count(),
         'borrowers': members.filter(user_type__in=['borrower', 'both']).count(),
         'total_items': Item.objects.count(),
+        'total_requests': BorrowRequest.objects.count(),
+        'pending_requests': BorrowRequest.objects.filter(status='pending').count(),
         'recent_users': members.order_by('-date_joined')[:5],
         'recent_items': Item.objects.select_related('owner', 'category')[:5],
     }
@@ -82,6 +85,7 @@ def admin_dashboard_view(request):
 
 @role_required('member')
 def member_dashboard_view(request):
+    BorrowRequest.expire_stale()
     today = timezone.localdate()
     my_items = Item.objects.filter(owner=request.user)
     nearby = (Item.objects
@@ -94,13 +98,21 @@ def member_dashboard_view(request):
               .select_related('owner')
               .prefetch_related('photos')
               .distinct()[:6])
+    history = (BorrowRequest.objects
+               .filter(Q(borrower=request.user) | Q(item__owner=request.user))
+               .select_related('item', 'borrower', 'item__owner')[:5])
     return render(request, 'accounts/member_dashboard.html', {
         'my_items_count': my_items.count(),
-        'my_active_count': my_items.filter(
-            status='available',
-            windows__start_date__lte=today,
-            windows__end_date__gte=today,
-        ).distinct().count(),
+        'my_active_count': my_items.filter(status='available').count(),
+        'incoming_pending': BorrowRequest.objects.filter(
+            item__owner=request.user,
+            status='pending',
+        ).count(),
+        'my_pending': BorrowRequest.objects.filter(
+            borrower=request.user,
+            status='pending',
+        ).count(),
+        'history': history,
         'nearby_items': nearby,
     })
 

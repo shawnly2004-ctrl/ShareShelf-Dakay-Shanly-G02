@@ -1,0 +1,8 @@
+{% if r.status == 'pending' %}<span class="badge bg-warning text-dark">Pending</span>
+{% elif r.status == 'approved' %}<span class="badge bg-success">Approved</span>
+{% elif r.status == 'declined' %}<span class="badge bg-danger">Declined</span>
+{% elif r.status == 'borrowed' %}<span class="badge bg-info text-dark">Borrowed</span>
+{% elif r.status == 'overdue' %}<span class="badge bg-danger">Overdue</span>
+{% elif r.status == 'completed' %}<span class="badge bg-primary">Completed</span>
+{% elif r.status == 'expired' %}<span class="badge bg-secondary">Expired</span>
+{% else %}<span class="badge bg-secondary">Cancelled</span>{% endif %}

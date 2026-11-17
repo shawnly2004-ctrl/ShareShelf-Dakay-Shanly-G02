@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}My Requests | ShareShelf{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">My Borrow Requests</h3>
+<div class="card shadow-sm"><div class="table-responsive">
+  <table class="table align-middle mb-0">
+    <thead><tr><th>Item</th><th>Owner</th><th>Dates</th><th>Status</th><th>Requested</th><th class="text-end">Action</th></tr></thead>
+    <tbody>
+      {% for r in requests %}
+      <tr>
+        <td><a href="{% url 'item_detail' r.item.pk %}">{{ r.item.name }}</a></td>
+        <td>{{ r.item.owner.first_name }} {{ r.item.owner.last_name }}
+            {% if r.status == 'approved' or r.status == 'borrowed' %}<br><span class="small text-muted">{{ r.item.owner.contact_number|default:r.item.owner.email }}</span>{% endif %}</td>
+        <td>{{ r.start_date|date:"M d" }} to {{ r.end_date|date:"M d, Y" }}</td>
+        <td>{% include 'items/_status_badge.html' %}</td>
+        <td class="small">{{ r.requested_at|date:"M d, Y" }}</td>
+        <td class="text-end">
+          {% if r.status == 'pending' or r.status == 'approved' %}
+          <form method="post" action="{% url 'request_cancel' r.pk %}" class="d-inline"
+                onsubmit="return confirm('Cancel this request?');">
+            {% csrf_token %}<button class="btn btn-sm btn-outline-danger">Cancel</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="text-center text-muted py-4">
+        No requests yet. <a href="{% url 'browse_items' %}">Browse items</a> to get started.
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

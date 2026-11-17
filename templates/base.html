@@ -21,10 +21,13 @@
          <li class="nav-item"><a class="nav-link" href="{% url 'admin_dashboard' %}">Admin Dashboard</a></li>
         <li class="nav-item"><a class="nav-link" href="{% url 'manage_users' %}">Manage Users</a></li>
         <li class="nav-item"><a class="nav-link" href="{% url 'admin_items' %}">All Items</a></li>
+         <li class="nav-item"><a class="nav-link" href="{% url 'admin_requests' %}">All Requests</a></li>
       {% else %}
         <li class="nav-item"><a class="nav-link" href="{% url 'member_dashboard' %}">My Dashboard</a></li>
         <li class="nav-item"><a class="nav-link" href="{% url 'browse_items' %}">Browse Items</a></li>
         <li class="nav-item"><a class="nav-link" href="{% url 'my_items' %}">My Items</a></li>
+         <li class="nav-item"><a class="nav-link" href="{% url 'incoming_requests' %}">Incoming</a></li>
+         <li class="nav-item"><a class="nav-link" href="{% url 'my_requests' %}">My Requests</a></li>
       {% endif %}
         <li class="nav-item"><a class="nav-link" href="{% url 'profile' %}">Profile</a></li>
     </ul>
