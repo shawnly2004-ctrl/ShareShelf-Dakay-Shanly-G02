@@ -10,8 +10,8 @@ from django.utils import timezone
 from django.utils.datastructures import MultiValueDict
 from PIL import Image
 
-from .forms import AvailabilityWindowForm, ItemForm, WindowFormSet
-from .models import AvailabilityWindow, Category, Item, ItemPhoto
+from .forms import AvailabilityWindowForm, BorrowRequestForm, ItemForm, WindowFormSet
+from .models import AvailabilityWindow, BorrowRequest, Category, Item, ItemPhoto
 
 
 def png_upload(name='photo.png', padding_bytes=0):
@@ -224,3 +224,230 @@ class ItemWorkflowTests(TestCase):
         self.client.post(reverse('item_toggle', args=[item.pk]))
         item.refresh_from_db()
         self.assertEqual(item.status, 'available')
+
+
+class BorrowRequestTests(TestCase):
+    def setUp(self):
+        from accounts.models import Community
+
+        today = timezone.localdate()
+        self.community = Community.objects.create(
+            name='Request Community',
+            barangay='Request Community',
+            city='Test City',
+        )
+        self.owner = self.create_user('request-owner@example.com', 'lender')
+        self.borrower = self.create_user('request-borrower@example.com', 'both')
+        self.category = Category.objects.create(name='Request tools')
+        self.item = Item.objects.create(
+            owner=self.owner,
+            category=self.category,
+            name='Requestable item',
+            description='A test item',
+        )
+        self.windows = [
+            (today + timedelta(days=1), today + timedelta(days=5)),
+            (today + timedelta(days=8), today + timedelta(days=12)),
+            (today + timedelta(days=20), today + timedelta(days=30)),
+        ]
+        for start, end in self.windows:
+            AvailabilityWindow.objects.create(item=self.item, start_date=start, end_date=end)
+
+    def create_user(self, email, user_type, community=None):
+        return get_user_model().objects.create_user(
+            email=email,
+            password='test-password',
+            user_type=user_type,
+            community=community or self.community,
+        )
+
+    def make_request(self, item=None, borrower=None, start=None, end=None, status='pending', **kwargs):
+        return BorrowRequest.objects.create(
+            item=item or self.item,
+            borrower=borrower or self.borrower,
+            start_date=start or self.windows[0][0],
+            end_date=end or self.windows[0][1],
+            status=status,
+            **kwargs,
+        )
+
+    def form_for(self, start, end, borrower=None, item=None):
+        return BorrowRequestForm(
+            data={
+                'start_date': start.isoformat(),
+                'end_date': end.isoformat(),
+                'message': '',
+            },
+            item=item or self.item,
+            borrower=borrower or self.borrower,
+        )
+
+    def assert_non_field_error(self, form, expected):
+        self.assertFalse(form.is_valid())
+        errors = [error.message for error in form.non_field_errors().as_data()]
+        self.assertIn(expected, errors)
+
+    def test_request_dates_must_fit_one_window_and_be_seven_days_or_less(self):
+        gap_form = self.form_for(self.windows[0][1] + timedelta(days=1),
+                                 self.windows[1][0] - timedelta(days=1))
+        self.assert_non_field_error(
+            gap_form,
+            "Your dates must fall entirely inside one of the item's availability windows.",
+        )
+
+        spanning_form = self.form_for(
+            self.windows[0][1] - timedelta(days=1),
+            self.windows[1][0] + timedelta(days=1),
+        )
+        self.assert_non_field_error(
+            spanning_form,
+            "Your dates must fall entirely inside one of the item's availability windows.",
+        )
+
+        too_long_form = self.form_for(
+            self.windows[2][0],
+            self.windows[2][0] + timedelta(days=8),
+        )
+        self.assert_non_field_error(too_long_form, "A loan can last at most 7 days.")
+
+    def test_request_form_rejects_past_and_reversed_dates(self):
+        today = timezone.localdate()
+        past_form = self.form_for(today - timedelta(days=1), today)
+        self.assertFalse(past_form.is_valid())
+        self.assertIn("Start date can't be in the past.",
+                      past_form.errors.as_data()['start_date'][0].message)
+
+        reversed_form = self.form_for(self.windows[0][0] + timedelta(days=2),
+                                      self.windows[0][0])
+        self.assertFalse(reversed_form.is_valid())
+        self.assertIn("End date can't be before the start date.",
+                      reversed_form.errors.as_data()['end_date'][0].message)
+
+    def test_duplicate_pending_blocking_overlap_and_active_request_limit(self):
+        valid_start = self.windows[0][0]
+        valid_end = valid_start + timedelta(days=1)
+        self.make_request(start=valid_start, end=valid_end)
+        duplicate = self.form_for(valid_start, valid_end)
+        self.assert_non_field_error(duplicate, "You already have a pending request for this item.")
+
+        BorrowRequest.objects.filter(item=self.item).delete()
+        self.make_request(start=valid_start, end=valid_end, status='approved')
+        overlap = self.form_for(valid_start + timedelta(days=1), valid_end + timedelta(days=1))
+        self.assert_non_field_error(
+            overlap,
+            "Those dates overlap with an approved loan. Pick other dates.",
+        )
+
+        BorrowRequest.objects.filter(item=self.item).delete()
+        for index in range(3):
+            other_item = Item.objects.create(
+                owner=self.owner,
+                category=self.category,
+                name=f'Other item {index}',
+                description='A test item',
+            )
+            self.make_request(item=other_item, status='pending')
+        at_limit = self.form_for(valid_start, valid_end)
+        self.assert_non_field_error(
+            at_limit,
+            "You can have at most 3 active requests at a time.",
+        )
+
+    def test_create_approve_and_decline_overlapping_pending_request(self):
+        self.client.force_login(self.borrower)
+        start = self.windows[0][0]
+        end = start + timedelta(days=2)
+        response = self.client.post(reverse('request_create', args=[self.item.pk]), {
+            'start_date': start.isoformat(),
+            'end_date': end.isoformat(),
+            'message': 'For a home project',
+        })
+        self.assertRedirects(response, reverse('my_requests'))
+        approved_request = BorrowRequest.objects.get(item=self.item, borrower=self.borrower)
+        self.assertEqual(approved_request.status, 'pending')
+        self.assertGreater(approved_request.expires_at, timezone.now())
+        self.assertLessEqual(approved_request.expires_at, timezone.now() + timedelta(days=3))
+
+        other_borrower = self.create_user('other-borrower@example.com', 'borrower')
+        overlapping = self.make_request(
+            borrower=other_borrower,
+            start=start + timedelta(days=1),
+            end=end,
+        )
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse('request_respond', args=[approved_request.pk]),
+            {'action': 'approve'},
+        )
+        self.assertRedirects(response, reverse('incoming_requests'))
+        approved_request.refresh_from_db()
+        overlapping.refresh_from_db()
+        self.assertEqual(approved_request.status, 'approved')
+        self.assertIsNotNone(approved_request.decided_at)
+        self.assertEqual(overlapping.status, 'declined')
+        self.assertIsNotNone(overlapping.decided_at)
+
+    def test_cancellation_expiry_and_delete_blocking(self):
+        pending = self.make_request()
+        self.client.force_login(self.borrower)
+        response = self.client.post(reverse('request_cancel', args=[pending.pk]))
+        self.assertRedirects(response, reverse('my_requests'))
+        pending.refresh_from_db()
+        self.assertEqual(pending.status, 'cancelled')
+
+        approved = self.make_request(status='approved')
+        self.client.post(reverse('request_cancel', args=[approved.pk]))
+        approved.refresh_from_db()
+        self.assertEqual(approved.status, 'cancelled')
+
+        stale = self.make_request()
+        BorrowRequest.objects.filter(pk=stale.pk).update(
+            expires_at=timezone.now() - timedelta(seconds=1),
+        )
+        self.client.get(reverse('my_requests'))
+        stale.refresh_from_db()
+        self.assertEqual(stale.status, 'expired')
+
+        blocking = self.make_request(status='approved')
+        self.client.force_login(self.owner)
+        response = self.client.post(reverse('item_delete', args=[self.item.pk]))
+        self.assertRedirects(response, reverse('my_items'))
+        self.assertTrue(Item.objects.filter(pk=self.item.pk).exists())
+        blocking.refresh_from_db()
+        self.assertEqual(blocking.status, 'approved')
+
+    def test_request_access_rules_and_owner_only_responses(self):
+        self.client.force_login(self.borrower)
+        own_item = self.item
+        own_item.owner = self.borrower
+        own_item.save(update_fields=['owner'])
+        response = self.client.get(reverse('request_create', args=[own_item.pk]))
+        self.assertRedirects(response, reverse('item_detail', args=[own_item.pk]))
+
+        self.item.owner = self.owner
+        self.item.save(update_fields=['owner'])
+        lender = self.create_user('lender-only@example.com', 'lender')
+        self.client.force_login(lender)
+        response = self.client.get(reverse('request_create', args=[self.item.pk]))
+        self.assertRedirects(response, reverse('profile_edit'))
+
+        other_community = self._create_community('Other Community')
+        outsider = self.create_user('outsider@example.com', 'borrower', other_community)
+        self.client.force_login(outsider)
+        response = self.client.get(reverse('request_create', args=[self.item.pk]))
+        self.assertEqual(response.status_code, 404)
+
+        request_record = self.make_request()
+        self.client.force_login(self.borrower)
+        response = self.client.get(reverse('request_respond', args=[request_record.pk]))
+        self.assertEqual(response.status_code, 405)
+        response = self.client.post(
+            reverse('request_respond', args=[request_record.pk]),
+            {'action': 'approve'},
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def _create_community(self, name):
+        from accounts.models import Community
+
+        return Community.objects.create(name=name, barangay=name, city='Test City')

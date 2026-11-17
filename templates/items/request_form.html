@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block title %}Request {{ item.name }} | ShareShelf{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h3 class="mb-1">Request to borrow</h3>
+        <p class="text-muted mb-1">{{ item.name }} from {{ item.owner.first_name }}</p>
+        <p class="small mb-3"><strong>Availability windows:</strong><br>
+          {% for window in item.windows.all %}
+            {{ window.start_date|date:"M d, Y" }} to {{ window.end_date|date:"M d, Y" }}<br>
+          {% endfor %}
+          <span class="text-muted">Maximum loan: 7 days. Your request expires if unanswered after 3 days.</span>
+        </p>
+
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger py-2">
+            {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+          </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+          {% for field in form %}
+            <div class="mb-3">
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+          <button type="submit" class="btn btn-primary">Send request</button>
+          <a href="{% url 'item_detail' item.pk %}" class="btn btn-outline-secondary">Cancel</a>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -59,7 +59,7 @@
         {% elif user.role == 'admin' %}
           <a href="{% url 'admin_items' %}" class="btn btn-outline-secondary">Back to all items</a>
         {% else %}
-          <button class="btn btn-primary" disabled>Request to borrow (coming next)</button>
+          <a href="{% url 'request_create' item.pk %}" class="btn btn-primary">Request to borrow</a>
           <a href="{% url 'browse_items' %}" class="btn btn-outline-secondary">Back to browse</a>
         {% endif %}
       </div>
