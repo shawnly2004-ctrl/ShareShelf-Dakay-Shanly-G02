@@ -40,7 +40,9 @@
   <div class="col-md-4 col-lg-2">
     <a href="{% url 'item_detail' item.pk %}" class="text-decoration-none text-dark">
       <div class="card shadow-sm h-100">
-        <img src="{{ item.photo.url }}" class="card-img-top" alt="{{ item.name }}" style="height:100px;object-fit:cover;">
+        {% with photo=item.primary_photo %}
+          {% if photo %}<img src="{{ photo.image.url }}" class="card-img-top" alt="{{ item.name }}" style="height:100px;object-fit:cover;">{% endif %}
+        {% endwith %}
         <div class="card-body p-2"><div class="small fw-semibold">{{ item.name }}</div></div>
       </div>
     </a>

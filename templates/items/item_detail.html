@@ -5,15 +5,37 @@
 <div class="row justify-content-center">
   <div class="col-md-8">
     <div class="card shadow-sm">
-      <img src="{{ item.photo.url }}" class="card-img-top" alt="{{ item.name }}"
-           style="max-height:380px;object-fit:cover;">
+      {% if item.photos.all %}
+      <div id="itemCarousel" class="carousel slide">
+        <div class="carousel-inner">
+          {% for photo in item.photos.all %}
+          <div class="carousel-item {% if forloop.first %}active{% endif %}">
+            <img src="{{ photo.image.url }}" class="d-block w-100" alt="{{ item.name }}"
+                 style="max-height:380px;object-fit:cover;">
+          </div>
+          {% endfor %}
+        </div>
+        {% if item.photos.all|length > 1 %}
+        <button class="carousel-control-prev" type="button" data-bs-target="#itemCarousel" data-bs-slide="prev">
+          <span class="carousel-control-prev-icon"></span>
+        </button>
+        <button class="carousel-control-next" type="button" data-bs-target="#itemCarousel" data-bs-slide="next">
+          <span class="carousel-control-next-icon"></span>
+        </button>
+        {% endif %}
+      </div>
+      {% endif %}
       <div class="card-body p-4">
         <h3 class="mb-2">{{ item.name }}</h3>
         <div class="mb-3">
-          <span class="badge bg-info text-dark">{{ item.get_category_display }}</span>
-          <span class="badge bg-dark">{{ item.get_condition_display }}</span>
-          {% if not item.is_available %}
-            <span class="badge bg-secondary">Paused</span>
+          <span class="badge bg-info text-dark">{{ item.category.name }}</span>
+          {% if item.item_condition %}
+            <span class="badge bg-dark">{{ item.item_condition }}</span>
+          {% endif %}
+          {% if item.status == 'unlisted' %}
+            <span class="badge bg-secondary">Unlisted</span>
+          {% elif item.status == 'on_loan' %}
+            <span class="badge bg-warning text-dark">On loan</span>
           {% elif item.is_open_now %}
             <span class="badge bg-success">Available now</span>
           {% else %}
@@ -24,10 +46,11 @@
         <p>{{ item.description|linebreaksbr }}</p>
 
         <table class="table table-borderless mb-3">
-          <tr><th style="width:35%">Available</th>
-              <td>{{ item.available_from|date:"M d, Y" }} to {{ item.available_until|date:"M d, Y" }}</td></tr>
+          <tr><th style="width:35%">Available windows</th>
+              <td>{% for window in item.windows.all %}{{ window.start_date|date:"M d, Y" }} to {{ window.end_date|date:"M d, Y" }}<br>{% empty %}-{% endfor %}</td></tr>
           <tr><th>Owner</th><td>{{ item.owner.first_name }} {{ item.owner.last_name }}</td></tr>
           <tr><th>Pickup area</th><td>{{ item.owner.barangay|default:"Not set" }}</td></tr>
+          {% if item.pickup_note %}<tr><th>Pickup note</th><td>{{ item.pickup_note }}</td></tr>{% endif %}
         </table>
 
            {% if is_owner %}
