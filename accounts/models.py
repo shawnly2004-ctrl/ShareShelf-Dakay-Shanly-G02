@@ -18,7 +18,18 @@ class UserManager(BaseUserManager):
         extra.setdefault('role', 'admin')
         return self.create_user(email, password, **extra)
 
+class Community(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    barangay = models.CharField(max_length=100)
+    city = models.CharField(max_length=100)
 
+    class Meta:
+        verbose_name_plural = 'communities'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+    
 class User(AbstractUser):
     ROLE_CHOICES = [('admin', 'Admin'), ('member', 'Member')]
     USER_TYPE_CHOICES = [('lender', 'Lender'), ('borrower', 'Borrower'), ('both', 'Both')]
@@ -28,7 +39,7 @@ class User(AbstractUser):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='member')
     user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='both')
     contact_number = models.CharField(max_length=20, blank=True)
-    barangay = models.CharField(max_length=100, blank=True)
+    community = models.ForeignKey(Community, on_delete=models.PROTECT, null=True, blank=True, related_name='residents')
     profile_photo = models.ImageField(upload_to='profiles/', blank=True, null=True)
 
     USERNAME_FIELD = 'email'
@@ -37,3 +48,7 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.email
+    @property
+    def barangay(self):
+        """Keeps existing templates ({{ user.barangay }}) working."""
+        return self.community.barangay if self.community else ''

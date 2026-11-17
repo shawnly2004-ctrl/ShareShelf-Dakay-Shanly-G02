@@ -88,7 +88,11 @@ def item_delete_view(request, pk):
 def browse_items_view(request):
     today = timezone.localdate()
     items = (Item.objects
-             .filter(is_available=True, available_until__gte=today)
+             .filter(
+                 is_available=True,
+                 available_until__gte=today,
+                 owner__community=request.user.community,
+             )
              .exclude(owner=request.user)
              .select_related('owner'))
 
