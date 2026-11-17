@@ -1,43 +1,126 @@
+import os
+
 from django import forms
+from django.core.exceptions import ValidationError
+from django.forms import BaseInlineFormSet, inlineformset_factory
 from django.utils import timezone
-from .models import Item
+
+from .models import AvailabilityWindow, Item
+
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
+ALLOWED_EXT = {'.jpg', '.jpeg', '.png'}
+MAX_PHOTOS = 5
+
+
+class MultipleFileInput(forms.FileInput):
+    allow_multiple_selected = True
+
+
+class MultipleImageField(forms.ImageField):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('widget', MultipleFileInput())
+        super().__init__(*args, **kwargs)
+
+    def clean(self, data, initial=None):
+        clean_file = super().clean
+        if isinstance(data, (list, tuple)):
+            result = [clean_file(file, initial) for file in data]
+        else:
+            result = [clean_file(data, initial)]
+        return [file for file in result if file]
 
 
 class ItemForm(forms.ModelForm):
+    photos = MultipleImageField(
+        required=False,
+        label="Photos (1 to 5, JPG or PNG, max 5 MB each)",
+    )
+
     class Meta:
         model = Item
-        fields = ['name', 'category', 'description', 'condition',
-                  'photo', 'available_from', 'available_until']
-        widgets = {
-            'description': forms.Textarea(attrs={'rows': 4}),
-            'available_from': forms.DateInput(attrs={'type': 'date'}),
-            'available_until': forms.DateInput(attrs={'type': 'date'}),
-        }
+        fields = ['name', 'category', 'description', 'item_condition', 'pickup_note']
+        widgets = {'description': forms.Textarea(attrs={'rows': 4})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for name, field in self.fields.items():
-            if isinstance(field.widget, (forms.Select,)):
-                field.widget.attrs['class'] = 'form-select'
-            else:
-                field.widget.attrs['class'] = 'form-control'
-        self.fields['photo'].widget.attrs['accept'] = 'image/*'
+        for field in self.fields.values():
+            css = 'form-select' if isinstance(field.widget, forms.Select) else 'form-control'
+            field.widget.attrs['class'] = css
+        self.fields['photos'].widget.attrs['accept'] = 'image/png,image/jpeg'
+        self.fields['category'].empty_label = "Select a category"
 
-    def clean_photo(self):
-        photo = self.cleaned_data.get('photo')
-        # Only check newly uploaded files (they have content_type)
-        if photo and hasattr(photo, 'content_type'):
-            if photo.size > 2 * 1024 * 1024:
-                raise forms.ValidationError("Image must be 2 MB or smaller.")
-        return photo
+    def clean_photos(self):
+        files = self.cleaned_data.get('photos') or []
+        for file in files:
+            if os.path.splitext(file.name)[1].lower() not in ALLOWED_EXT:
+                raise ValidationError(f'"{file.name}" must be a JPG or PNG file.')
+            if file.size > MAX_PHOTO_BYTES:
+                raise ValidationError(f'"{file.name}" is larger than 5 MB.')
+        return files
 
     def clean(self):
         cleaned = super().clean()
-        start = cleaned.get('available_from')
-        end = cleaned.get('available_until')
+        new_files = cleaned.get('photos') or []
+        existing = 0
+        if self.instance.pk:
+            removed = set(self.data.getlist('delete_photos'))
+            existing = sum(
+                1 for photo in self.instance.photos.all()
+                if str(photo.pk) not in removed
+            )
+        total = existing + len(new_files)
+        if total < 1:
+            self.add_error('photos', "Upload at least 1 photo.")
+        elif total > MAX_PHOTOS:
+            self.add_error(
+                'photos',
+                f"An item can have at most {MAX_PHOTOS} photos (you would have {total}).",
+            )
+        return cleaned
+
+
+class AvailabilityWindowForm(forms.ModelForm):
+    class Meta:
+        model = AvailabilityWindow
+        fields = ['start_date', 'end_date']
+        widgets = {
+            'start_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'end_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        start = cleaned.get('start_date')
+        end = cleaned.get('end_date')
         if start and end:
             if end < start:
-                self.add_error('available_until', "End date can't be before the start date.")
-            elif end < timezone.localdate():
-                self.add_error('available_until', "End date can't be in the past.")
+                self.add_error('end_date', "End date can't be before the start date.")
+            elif end < timezone.localdate() and self.has_changed():
+                self.add_error('end_date', "End date can't be in the past.")
         return cleaned
+
+
+class BaseWindowFormSet(BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        active_windows = [
+            form for form in self.forms
+            if form.cleaned_data
+            and not form.cleaned_data.get('DELETE')
+            and form.cleaned_data.get('start_date')
+            and form.cleaned_data.get('end_date')
+        ]
+        if not active_windows:
+            raise ValidationError("Add at least one availability window.")
+
+
+WindowFormSet = inlineformset_factory(
+    Item,
+    AvailabilityWindow,
+    form=AvailabilityWindowForm,
+    formset=BaseWindowFormSet,
+    extra=1,
+    can_delete=True,
+)
