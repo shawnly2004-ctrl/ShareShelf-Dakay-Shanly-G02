@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}{{ item.name }} | ShareShelf{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8">
+    <div class="card shadow-sm">
+      <img src="{{ item.photo.url }}" class="card-img-top" alt="{{ item.name }}"
+           style="max-height:380px;object-fit:cover;">
+      <div class="card-body p-4">
+        <h3 class="mb-2">{{ item.name }}</h3>
+        <div class="mb-3">
+          <span class="badge bg-info text-dark">{{ item.get_category_display }}</span>
+          <span class="badge bg-dark">{{ item.get_condition_display }}</span>
+          {% if not item.is_available %}
+            <span class="badge bg-secondary">Paused</span>
+          {% elif item.is_open_now %}
+            <span class="badge bg-success">Available now</span>
+          {% else %}
+            <span class="badge bg-warning text-dark">Outside availability window</span>
+          {% endif %}
+        </div>
+
+        <p>{{ item.description|linebreaksbr }}</p>
+
+        <table class="table table-borderless mb-3">
+          <tr><th style="width:35%">Available</th>
+              <td>{{ item.available_from|date:"M d, Y" }} to {{ item.available_until|date:"M d, Y" }}</td></tr>
+          <tr><th>Owner</th><td>{{ item.owner.first_name }} {{ item.owner.last_name }}</td></tr>
+          <tr><th>Pickup area</th><td>{{ item.owner.barangay|default:"Not set" }}</td></tr>
+        </table>
+
+        {% if is_owner %}
+          <a href="{% url 'item_edit' item.pk %}" class="btn btn-primary">Edit</a>
+          <a href="{% url 'my_items' %}" class="btn btn-outline-secondary">Back to my items</a>
+        {% else %}
+          <button class="btn btn-primary" disabled>Request to borrow (coming in Sprint 3)</button>
+          <a href="{% url 'member_dashboard' %}" class="btn btn-outline-secondary">Back</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
