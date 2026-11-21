@@ -17,10 +17,18 @@
         {% endfor %}
       </select>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
       <input type="date" name="date" value="{{ date }}" class="form-control" title="Available on this date">
     </div>
-    <div class="col-md-2 d-grid"><button class="btn btn-primary">Search</button></div>
+    <div class="col-md-3">
+      <select name="distance" class="form-select" title="Distance from you">
+        <option value="">Any distance</option>
+        <option value="5" {% if distance == "5" %}selected{% endif %}>Within 5 km</option>
+        <option value="10" {% if distance == "10" %}selected{% endif %}>Within 10 km</option>
+        <option value="25" {% if distance == "25" %}selected{% endif %}>Within 25 km</option>
+      </select>
+    </div>
+    <div class="col-md-1 d-grid"><button class="btn btn-primary">Search</button></div>
   </div>
 </form>
 
