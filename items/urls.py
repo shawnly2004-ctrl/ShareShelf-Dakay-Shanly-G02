@@ -21,5 +21,6 @@ urlpatterns = [
         views.handoff_confirm_view,
         name='handoff_confirm',
     ),
+    path('requests/<int:pk>/rating/', views.rating_create_view, name='rating_create'),
     path('requests/admin/', views.admin_requests_view, name='admin_requests'),
 ]

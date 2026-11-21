@@ -28,7 +28,25 @@
           <tr><th>Contact number</th><td>{{ user.contact_number|default:"Not set" }}</td></tr>
           <tr><th>Barangay</th><td>{{ user.barangay|default:"Not set" }}</td></tr>
           <tr><th>Member since</th><td>{{ user.date_joined|date:"M d, Y" }}</td></tr>
+          <tr><th>Average rating</th><td>
+            {% if user.avg_rating %}{{ user.avg_rating }}/5 ({{ user.rating_count }} ratings)
+            {% else %}No ratings yet{% endif %}
+            {% if user.account_status == 'flagged' %}<span class="badge bg-danger ms-2">Flagged</span>{% endif %}
+          </td></tr>
         </table>
+
+        {% if received_ratings %}
+        <h5 class="mt-4">Received ratings</h5>
+        <div class="list-group mb-3">
+          {% for rating in received_ratings %}
+          <div class="list-group-item">
+            <strong>{{ rating.score }}/5</strong>
+            <span class="text-muted">from {{ rating.rater.first_name }} {{ rating.rater.last_name }}</span>
+            {% if rating.review_text %}<div class="small mt-1">{{ rating.review_text }}</div>{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
 
         <a href="{% url 'profile_edit' %}" class="btn btn-primary">Edit profile</a>
         <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">Back</a>

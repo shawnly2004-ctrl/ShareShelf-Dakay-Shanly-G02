@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}Submit Rating | ShareShelf{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h3 class="mb-3">Rate {{ ratee.first_name }} {{ ratee.last_name }}</h3>
+        <p class="text-muted">Transaction: {{ borrow_request.item.name }}</p>
+        <form method="post">
+          {% csrf_token %}
+          {{ form.non_field_errors }}
+          <div class="mb-3">
+            <label class="form-label">Score</label>
+            {{ form.score }}
+            {% for error in form.score.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.review_text.id_for_label }}">Review</label>
+            {{ form.review_text }}
+            {% for error in form.review_text.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <button type="submit" class="btn btn-primary">Submit rating</button>
+          <a href="{% url 'my_requests' %}" class="btn btn-outline-secondary">Cancel</a>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

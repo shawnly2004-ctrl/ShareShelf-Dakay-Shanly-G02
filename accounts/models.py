@@ -41,6 +41,13 @@ class User(AbstractUser):
     contact_number = models.CharField(max_length=20, blank=True)
     community = models.ForeignKey(Community, on_delete=models.PROTECT, null=True, blank=True, related_name='residents')
     profile_photo = models.ImageField(upload_to='profiles/', blank=True, null=True)
+    avg_rating = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True)
+    rating_count = models.PositiveIntegerField(default=0)
+    account_status = models.CharField(
+        max_length=20,
+        choices=[('active', 'Active'), ('flagged', 'Flagged')],
+        default='active',
+    )
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []

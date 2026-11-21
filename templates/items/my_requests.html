@@ -32,6 +32,8 @@
             {% csrf_token %}
             <button class="btn btn-sm btn-primary">Confirm return</button>
           </form>
+          {% elif r.status == 'completed' %}
+          <a href="{% url 'rating_create' r.pk %}" class="btn btn-sm btn-outline-primary">Rate owner</a>
           {% endif %}
         </td>
       </tr>

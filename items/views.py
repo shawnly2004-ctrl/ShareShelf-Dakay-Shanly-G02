@@ -10,8 +10,8 @@ from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
 from accounts.decorators import role_required
-from .forms import BorrowRequestForm, ItemForm, WindowFormSet
-from .models import BorrowRequest, Category, HandoffConfirmation, Item, ItemPhoto
+from .forms import BorrowRequestForm, ItemForm, RatingForm, WindowFormSet
+from .models import BorrowRequest, Category, HandoffConfirmation, Item, ItemPhoto, Rating
 
 
 def _can_lend(user):
@@ -354,6 +354,50 @@ def request_cancel_view(request, pk):
     borrow_request.save(update_fields=['status'])
     messages.success(request, "Your request was cancelled.")
     return redirect('my_requests')
+
+
+@role_required('member')
+def rating_create_view(request, pk):
+    borrow_request = get_object_or_404(
+        BorrowRequest.objects.select_related('item', 'item__owner', 'borrower'),
+        Q(item__owner=request.user) | Q(borrower=request.user),
+        pk=pk,
+    )
+    destination = (
+        'incoming_requests'
+        if borrow_request.item.owner_id == request.user.id
+        else 'my_requests'
+    )
+
+    if borrow_request.status != 'completed':
+        messages.error(request, "Ratings can only be submitted after a completed transaction.")
+        return redirect(destination)
+    if Rating.objects.filter(request=borrow_request, rater=request.user).exists():
+        messages.error(request, "You have already rated this transaction.")
+        return redirect(destination)
+
+    ratee = (
+        borrow_request.borrower
+        if borrow_request.item.owner_id == request.user.id
+        else borrow_request.item.owner
+    )
+    form = RatingForm(request.POST or None)
+    if request.method == 'POST':
+        if form.is_valid():
+            rating = form.save(commit=False)
+            rating.request = borrow_request
+            rating.rater = request.user
+            rating.ratee = ratee
+            rating.save()
+            messages.success(request, "Rating submitted successfully.")
+            return redirect(destination)
+        messages.error(request, "Please fix the errors below.")
+
+    return render(request, 'items/rating_form.html', {
+        'form': form,
+        'borrow_request': borrow_request,
+        'ratee': ratee,
+    })
 
 
 @role_required('member')

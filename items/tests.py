@@ -18,6 +18,7 @@ from .models import (
     HandoffConfirmation,
     Item,
     ItemPhoto,
+    Rating,
 )
 
 
@@ -584,3 +585,138 @@ class HandoffConfirmationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.request.refresh_from_db()
         self.assertEqual(self.request.status, 'overdue')
+
+
+class RatingTests(TestCase):
+    def setUp(self):
+        from accounts.models import Community
+
+        today = timezone.localdate()
+        self.community = Community.objects.create(
+            name='Rating Community',
+            barangay='Rating Community',
+            city='Test City',
+        )
+        self.owner = get_user_model().objects.create_user(
+            email='rating-owner@example.com',
+            password='test-password',
+            community=self.community,
+            user_type='lender',
+        )
+        self.borrower = get_user_model().objects.create_user(
+            email='rating-borrower@example.com',
+            password='test-password',
+            community=self.community,
+            user_type='borrower',
+        )
+        self.category = Category.objects.create(name='Rating tools')
+        self.item = Item.objects.create(
+            owner=self.owner,
+            category=self.category,
+            name='Rated item',
+            description='A test item',
+        )
+        self.request = BorrowRequest.objects.create(
+            item=self.item,
+            borrower=self.borrower,
+            start_date=today - timedelta(days=3),
+            end_date=today - timedelta(days=1),
+            status='completed',
+        )
+
+    def test_only_request_participants_can_submit_one_rating(self):
+        outsider = get_user_model().objects.create_user(
+            email='rating-outsider@example.com',
+            password='test-password',
+            community=self.community,
+            user_type='both',
+        )
+        self.client.force_login(outsider)
+        response = self.client.post(
+            reverse('rating_create', args=[self.request.pk]),
+            {'score': '5', 'review_text': 'Excellent'},
+        )
+        self.assertEqual(response.status_code, 404)
+
+        self.client.force_login(self.borrower)
+        response = self.client.post(
+            reverse('rating_create', args=[self.request.pk]),
+            {'score': '5', 'review_text': 'Great lender'},
+        )
+        self.assertRedirects(response, reverse('my_requests'))
+        rating = Rating.objects.get(request=self.request, rater=self.borrower)
+        self.assertEqual(rating.ratee, self.owner)
+        self.owner.refresh_from_db()
+        self.assertEqual(str(self.owner.avg_rating), '5.00')
+        self.assertEqual(self.owner.rating_count, 1)
+
+        response = self.client.post(
+            reverse('rating_create', args=[self.request.pk]),
+            {'score': '1', 'review_text': 'Duplicate'},
+        )
+        self.assertRedirects(response, reverse('my_requests'))
+        self.assertEqual(
+            Rating.objects.filter(request=self.request, rater=self.borrower).count(),
+            1,
+        )
+
+    def test_owner_and_borrower_can_each_rate_the_other(self):
+        self.client.force_login(self.owner)
+        self.client.post(
+            reverse('rating_create', args=[self.request.pk]),
+            {'score': '2', 'review_text': 'Delayed'},
+        )
+        self.client.force_login(self.borrower)
+        self.client.post(
+            reverse('rating_create', args=[self.request.pk]),
+            {'score': '5', 'review_text': 'Helpful'},
+        )
+
+        self.owner.refresh_from_db()
+        self.borrower.refresh_from_db()
+        self.assertEqual(str(self.owner.avg_rating), '5.00')
+        self.assertEqual(str(self.borrower.avg_rating), '2.00')
+        self.assertEqual(self.owner.rating_count, 1)
+        self.assertEqual(self.borrower.rating_count, 1)
+        self.assertEqual(Rating.objects.filter(request=self.request).count(), 2)
+
+    def test_rating_requires_completed_request_and_valid_score(self):
+        self.request.status = 'borrowed'
+        self.request.save(update_fields=['status'])
+        self.client.force_login(self.borrower)
+        response = self.client.post(
+            reverse('rating_create', args=[self.request.pk]),
+            {'score': '5', 'review_text': 'Too early'},
+        )
+        self.assertRedirects(response, reverse('my_requests'))
+        self.assertFalse(Rating.objects.filter(request=self.request).exists())
+
+        self.request.status = 'completed'
+        self.request.save(update_fields=['status'])
+        response = self.client.post(
+            reverse('rating_create', args=[self.request.pk]),
+            {'score': '6', 'review_text': 'Invalid'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Select a valid choice.')
+
+    def test_low_average_after_five_ratings_flags_account(self):
+        for index in range(5):
+            request_record = BorrowRequest.objects.create(
+                item=self.item,
+                borrower=self.borrower,
+                start_date=self.request.start_date - timedelta(days=index + 1),
+                end_date=self.request.start_date - timedelta(days=index),
+                status='completed',
+            )
+            Rating.objects.create(
+                request=request_record,
+                rater=self.borrower,
+                ratee=self.owner,
+                score=2,
+            )
+
+        self.owner.refresh_from_db()
+        self.assertEqual(str(self.owner.avg_rating), '2.00')
+        self.assertEqual(self.owner.rating_count, 5)
+        self.assertEqual(self.owner.account_status, 'flagged')
