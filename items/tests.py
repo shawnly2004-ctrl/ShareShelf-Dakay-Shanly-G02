@@ -11,7 +11,14 @@ from django.utils.datastructures import MultiValueDict
 from PIL import Image
 
 from .forms import AvailabilityWindowForm, BorrowRequestForm, ItemForm, WindowFormSet
-from .models import AvailabilityWindow, BorrowRequest, Category, Item, ItemPhoto
+from .models import (
+    AvailabilityWindow,
+    BorrowRequest,
+    Category,
+    HandoffConfirmation,
+    Item,
+    ItemPhoto,
+)
 
 
 def png_upload(name='photo.png', padding_bytes=0):
@@ -462,3 +469,118 @@ class BorrowRequestTests(TestCase):
         from accounts.models import Community
 
         return Community.objects.create(name=name, barangay=name, city='Test City')
+
+
+class HandoffConfirmationTests(TestCase):
+    def setUp(self):
+        from accounts.models import Community
+
+        today = timezone.localdate()
+        self.community = Community.objects.create(
+            name='Handoff Community',
+            barangay='Handoff Community',
+            city='Test City',
+        )
+        self.owner = get_user_model().objects.create_user(
+            email='handoff-owner@example.com',
+            password='test-password',
+            community=self.community,
+            user_type='lender',
+        )
+        self.borrower = get_user_model().objects.create_user(
+            email='handoff-borrower@example.com',
+            password='test-password',
+            community=self.community,
+            user_type='borrower',
+        )
+        self.category = Category.objects.create(name='Handoff tools')
+        self.item = Item.objects.create(
+            owner=self.owner,
+            category=self.category,
+            name='Handoff item',
+            description='A test item',
+        )
+        self.request = BorrowRequest.objects.create(
+            item=self.item,
+            borrower=self.borrower,
+            start_date=today,
+            end_date=today + timedelta(days=2),
+            status='approved',
+        )
+
+    def test_pickup_requires_both_confirmations_then_marks_borrowed(self):
+        self.client.force_login(self.owner)
+        self.client.post(reverse('handoff_confirm', args=[self.request.pk, 'pickup']))
+        self.request.refresh_from_db()
+        self.item.refresh_from_db()
+        pickup = HandoffConfirmation.objects.get(
+            request=self.request,
+            handoff_type='pickup',
+        )
+        self.assertIsNotNone(pickup.lender_confirmed_at)
+        self.assertIsNone(pickup.borrower_confirmed_at)
+        self.assertEqual(pickup.completed_at, None)
+        self.assertEqual(self.request.status, 'approved')
+        self.assertEqual(self.item.status, 'available')
+
+        self.client.force_login(self.borrower)
+        self.client.post(reverse('handoff_confirm', args=[self.request.pk, 'pickup']))
+        self.request.refresh_from_db()
+        self.item.refresh_from_db()
+        pickup.refresh_from_db()
+        self.assertIsNotNone(pickup.completed_at)
+        self.assertEqual(self.request.status, 'borrowed')
+        self.assertEqual(self.item.status, 'on_loan')
+
+    def test_return_requires_both_confirmations_then_marks_completed(self):
+        self.request.status = 'borrowed'
+        self.request.save(update_fields=['status'])
+        self.item.status = 'on_loan'
+        self.item.save(update_fields=['status'])
+
+        self.client.force_login(self.owner)
+        self.client.post(reverse('handoff_confirm', args=[self.request.pk, 'return']))
+        self.request.refresh_from_db()
+        self.item.refresh_from_db()
+        self.assertEqual(self.request.status, 'borrowed')
+        self.assertEqual(self.item.status, 'on_loan')
+
+        self.client.force_login(self.borrower)
+        self.client.post(reverse('handoff_confirm', args=[self.request.pk, 'return']))
+        self.request.refresh_from_db()
+        self.item.refresh_from_db()
+        return_confirmation = HandoffConfirmation.objects.get(
+            request=self.request,
+            handoff_type='return',
+        )
+        self.assertIsNotNone(return_confirmation.completed_at)
+        self.assertEqual(self.request.status, 'completed')
+        self.assertEqual(self.item.status, 'available')
+
+    def test_only_request_owner_or_borrower_can_confirm(self):
+        outsider = get_user_model().objects.create_user(
+            email='handoff-outsider@example.com',
+            password='test-password',
+            community=self.community,
+            user_type='both',
+        )
+        self.client.force_login(outsider)
+        response = self.client.post(
+            reverse('handoff_confirm', args=[self.request.pk, 'pickup']),
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(HandoffConfirmation.objects.filter(request=self.request).exists())
+
+    def test_borrowed_request_after_end_date_is_marked_overdue(self):
+        yesterday = timezone.localdate() - timedelta(days=1)
+        self.request.status = 'borrowed'
+        self.request.start_date = yesterday
+        self.request.end_date = yesterday
+        self.request.save(update_fields=['status', 'start_date', 'end_date'])
+
+        self.client.force_login(self.borrower)
+        response = self.client.get(reverse('my_requests'))
+
+        self.assertEqual(response.status_code, 200)
+        self.request.refresh_from_db()
+        self.assertEqual(self.request.status, 'overdue')

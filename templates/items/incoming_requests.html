@@ -22,6 +22,16 @@
             <button name="action" value="approve" class="btn btn-sm btn-success">Approve</button>
             <button name="action" value="decline" class="btn btn-sm btn-outline-danger">Decline</button>
           </form>
+          {% elif r.status == 'approved' %}
+          <form method="post" action="{% url 'handoff_confirm' r.pk 'pickup' %}" class="d-inline">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-primary">Confirm pickup</button>
+          </form>
+          {% elif r.status == 'borrowed' or r.status == 'overdue' %}
+          <form method="post" action="{% url 'handoff_confirm' r.pk 'return' %}" class="d-inline">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-primary">Confirm return</button>
+          </form>
           {% endif %}
         </td>
       </tr>

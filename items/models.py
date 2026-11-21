@@ -155,3 +155,39 @@ class BorrowRequest(models.Model):
             status='pending',
             expires_at__lt=timezone.now(),
         ).update(status='expired')
+
+    @classmethod
+    def mark_overdue(cls):
+        today = timezone.localdate()
+        return cls.objects.filter(
+            status='borrowed',
+            end_date__lt=today,
+        ).update(status='overdue')
+
+
+class HandoffConfirmation(models.Model):
+    HANDOFF_TYPE_CHOICES = [
+        ('pickup', 'Pickup'),
+        ('return', 'Return'),
+    ]
+
+    request = models.ForeignKey(
+        BorrowRequest,
+        on_delete=models.CASCADE,
+        related_name='handoffs',
+    )
+    handoff_type = models.CharField(max_length=10, choices=HANDOFF_TYPE_CHOICES)
+    lender_confirmed_at = models.DateTimeField(null=True, blank=True)
+    borrower_confirmed_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['request', 'handoff_type'],
+                name='unique_request_handoff_type',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.handoff_type.title()} confirmation for request {self.request_id}"

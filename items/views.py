@@ -11,7 +11,7 @@ from django.views.decorators.http import require_POST
 
 from accounts.decorators import role_required
 from .forms import BorrowRequestForm, ItemForm, WindowFormSet
-from .models import BorrowRequest, Category, Item, ItemPhoto
+from .models import BorrowRequest, Category, HandoffConfirmation, Item, ItemPhoto
 
 
 def _can_lend(user):
@@ -230,6 +230,7 @@ def admin_item_delete_view(request, pk):
 @role_required('member')
 def request_create_view(request, pk):
     BorrowRequest.expire_stale()
+    BorrowRequest.mark_overdue()
     item = get_object_or_404(
         Item.objects.select_related('owner', 'category').prefetch_related('windows'),
         pk=pk,
@@ -273,6 +274,7 @@ def request_create_view(request, pk):
 @role_required('member')
 def my_requests_view(request):
     BorrowRequest.expire_stale()
+    BorrowRequest.mark_overdue()
     requests = (BorrowRequest.objects.filter(borrower=request.user)
                 .select_related('item', 'item__owner'))
     return render(request, 'items/my_requests.html', {'requests': requests})
@@ -281,6 +283,7 @@ def my_requests_view(request):
 @role_required('member')
 def incoming_requests_view(request):
     BorrowRequest.expire_stale()
+    BorrowRequest.mark_overdue()
     requests = (BorrowRequest.objects.filter(item__owner=request.user)
                 .select_related('item', 'borrower'))
     return render(request, 'items/incoming_requests.html', {'requests': requests})
@@ -290,6 +293,7 @@ def incoming_requests_view(request):
 @require_POST
 def request_respond_view(request, pk):
     BorrowRequest.expire_stale()
+    BorrowRequest.mark_overdue()
     action = request.POST.get('action')
     if action not in ('approve', 'decline'):
         messages.error(request, "Invalid action.")
@@ -352,9 +356,71 @@ def request_cancel_view(request, pk):
     return redirect('my_requests')
 
 
+@role_required('member')
+@require_POST
+def handoff_confirm_view(request, pk, handoff_type):
+    if handoff_type not in ('pickup', 'return'):
+        raise Http404
+
+    BorrowRequest.expire_stale()
+    BorrowRequest.mark_overdue()
+
+    with transaction.atomic():
+        borrow_request = get_object_or_404(
+            BorrowRequest.objects.select_related('item', 'borrower', 'item__owner'),
+            Q(item__owner=request.user) | Q(borrower=request.user),
+            pk=pk,
+        )
+        Item.objects.select_for_update().get(pk=borrow_request.item_id)
+
+        if handoff_type == 'pickup':
+            if borrow_request.status not in ('approved', 'borrowed'):
+                messages.error(request, "Pickup confirmation isn't available for this request.")
+                return redirect('my_requests')
+        elif borrow_request.status not in ('borrowed', 'overdue'):
+            messages.error(request, "Return confirmation isn't available for this request.")
+            return redirect('my_requests')
+
+        confirmation, _ = HandoffConfirmation.objects.select_for_update().get_or_create(
+            request=borrow_request,
+            handoff_type=handoff_type,
+        )
+        now = timezone.now()
+
+        if borrow_request.item.owner_id == request.user.id:
+            confirmation.lender_confirmed_at = confirmation.lender_confirmed_at or now
+        else:
+            confirmation.borrower_confirmed_at = confirmation.borrower_confirmed_at or now
+
+        if confirmation.lender_confirmed_at and confirmation.borrower_confirmed_at:
+            confirmation.completed_at = confirmation.completed_at or now
+        confirmation.save()
+
+        if confirmation.completed_at:
+            if handoff_type == 'pickup' and borrow_request.status == 'approved':
+                borrow_request.status = 'borrowed'
+                borrow_request.save(update_fields=['status'])
+                borrow_request.item.status = 'on_loan'
+                borrow_request.item.save(update_fields=['status', 'updated_at'])
+            elif handoff_type == 'return' and borrow_request.status in ('borrowed', 'overdue'):
+                borrow_request.status = 'completed'
+                borrow_request.save(update_fields=['status'])
+                borrow_request.item.status = 'available'
+                borrow_request.item.save(update_fields=['status', 'updated_at'])
+
+    messages.success(
+        request,
+        f'{handoff_type.title()} confirmation recorded.',
+    )
+    if borrow_request.item.owner_id == request.user.id:
+        return redirect('incoming_requests')
+    return redirect('my_requests')
+
+
 @role_required('admin')
 def admin_requests_view(request):
     BorrowRequest.expire_stale()
+    BorrowRequest.mark_overdue()
     requests = BorrowRequest.objects.select_related('item', 'borrower', 'item__owner')
     status = request.GET.get('status', '')
     if status in dict(BorrowRequest.STATUS_CHOICES):
