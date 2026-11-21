@@ -114,6 +114,9 @@ class ItemWorkflowTests(TestCase):
     def setUp(self):
         self.community = self.create_community('Community One')
         self.owner = self.create_user('owner@example.com', self.community)
+        self.owner.latitude = '10.315699'
+        self.owner.longitude = '123.885436'
+        self.owner.save(update_fields=['latitude', 'longitude'])
         self.category = Category.objects.create(name='Test tools')
         self.client.force_login(self.owner)
 
@@ -210,13 +213,30 @@ class ItemWorkflowTests(TestCase):
         self.assertEqual(item.windows.count(), 3)
 
         neighbor = self.create_user('neighbor@example.com', self.community)
+        neighbor.latitude = '10.315700'
+        neighbor.longitude = '123.885400'
+        neighbor.save(update_fields=['latitude', 'longitude'])
         neighbor_item = self.create_item(
             'Neighbor listing', neighbor, self.category, window_start, window_end,
         )
         other_community = self.create_community('Community Two')
         distant_owner = self.create_user('distant@example.com', other_community)
+        distant_owner.latitude = '10.500000'
+        distant_owner.longitude = '124.100000'
+        distant_owner.save(update_fields=['latitude', 'longitude'])
         distant_item = self.create_item(
             'Distant listing', distant_owner, self.category, window_start, window_end,
+        )
+        same_community_far_owner = self.create_user('far-neighbor@example.com', self.community)
+        same_community_far_owner.latitude = '10.500000'
+        same_community_far_owner.longitude = '124.100000'
+        same_community_far_owner.save(update_fields=['latitude', 'longitude'])
+        far_item = self.create_item(
+            'Far neighborhood listing',
+            same_community_far_owner,
+            self.category,
+            window_start,
+            window_end,
         )
 
         response = self.client.get(reverse('browse_items'), {
@@ -229,6 +249,12 @@ class ItemWorkflowTests(TestCase):
             f'href="{reverse("item_detail", args=[item.pk])}"',
         )
         self.assertNotContains(response, distant_item.name)
+        response = self.client.get(reverse('browse_items'), {
+            'distance': '5',
+            'category': str(self.category.pk),
+        })
+        self.assertContains(response, neighbor_item.name)
+        self.assertNotContains(response, far_item.name)
         self.assertEqual(
             self.client.get(reverse('item_detail', args=[distant_item.pk])).status_code,
             404,

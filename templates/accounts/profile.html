@@ -27,6 +27,8 @@
           <tr><th style="width:35%">Email</th><td>{{ user.email }}</td></tr>
           <tr><th>Contact number</th><td>{{ user.contact_number|default:"Not set" }}</td></tr>
           <tr><th>Barangay</th><td>{{ user.barangay|default:"Not set" }}</td></tr>
+          <tr><th>Address</th><td>{{ user.address_detail|default:"Not set" }}</td></tr>
+          <tr><th>Language</th><td>{{ user.get_language_pref_display|default:"English" }}</td></tr>
           <tr><th>Member since</th><td>{{ user.date_joined|date:"M d, Y" }}</td></tr>
           <tr><th>Average rating</th><td>
             {% if user.avg_rating %}{{ user.avg_rating }}/5 ({{ user.rating_count }} ratings)

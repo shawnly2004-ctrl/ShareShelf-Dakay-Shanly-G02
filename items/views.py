@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
+from math import atan2, cos, radians, sin, sqrt
 
 from accounts.decorators import role_required
 from .forms import (
@@ -198,6 +199,23 @@ def browse_items_view(request):
         category = ''
     if on_date and on_date >= today:
         items = items.filter(windows__start_date__lte=on_date, windows__end_date__gte=on_date)
+    distance = request.GET.get('distance', '').strip()
+    if distance.isdigit() and distance != '0':
+        distance_km = int(distance)
+        if request.user.latitude is not None and request.user.longitude is not None:
+            in_range = []
+            for item in items:
+                owner = item.owner
+                if owner.latitude is None or owner.longitude is None:
+                    continue
+                lat1, lon1 = radians(float(request.user.latitude)), radians(float(request.user.longitude))
+                lat2, lon2 = radians(float(owner.latitude)), radians(float(owner.longitude))
+                dlat, dlon = lat2 - lat1, lon2 - lon1
+                a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+                km = 6371 * 2 * atan2(sqrt(a), sqrt(1 - a))
+                if km <= distance_km:
+                    in_range.append(item.pk)
+            items = items.filter(pk__in=in_range)
 
     page_obj = Paginator(items, 9).get_page(request.GET.get('page'))
     params = request.GET.copy()
@@ -208,6 +226,7 @@ def browse_items_view(request):
         'q': q,
         'category': category,
         'date': request.GET.get('date', ''),
+        'distance': request.GET.get('distance', ''),
         'categories': Category.objects.all(),
         'querystring': params.urlencode(),
     })
