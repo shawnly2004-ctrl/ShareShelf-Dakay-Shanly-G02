@@ -16,5 +16,10 @@ urlpatterns = [
     path('requests/incoming/', views.incoming_requests_view, name='incoming_requests'),
     path('requests/<int:pk>/respond/', views.request_respond_view, name='request_respond'),
     path('requests/<int:pk>/cancel/', views.request_cancel_view, name='request_cancel'),
+    path(
+        'requests/<int:pk>/handoff/<str:handoff_type>/',
+        views.handoff_confirm_view,
+        name='handoff_confirm',
+    ),
     path('requests/admin/', views.admin_requests_view, name='admin_requests'),
 ]
