@@ -361,3 +361,71 @@ class Notification(models.Model):
                 )
                 count += 1
         return count
+
+    @classmethod
+    def match_wishlist(cls, item):
+        if item.status != 'available':
+            return 0
+
+        count = 0
+        entries = Wishlist.objects.filter(
+            is_active=True,
+            user__community_id=item.owner.community_id,
+        ).exclude(user=item.owner).select_related('user', 'category')
+
+        notified_users = set(
+            cls.objects.filter(
+                notif_type='wishlist_match',
+                message__contains=item.name,
+                user__community_id=item.owner.community_id,
+            ).values_list('user_id', flat=True)
+        )
+
+        for entry in entries:
+            if entry.user_id in notified_users:
+                continue
+            category_matches = entry.category_id == item.category_id
+            keyword_matches = bool(
+                entry.keyword
+                and entry.keyword.lower() in item.name.lower()
+            )
+            if category_matches or keyword_matches:
+                cls.objects.create(
+                    user=entry.user,
+                    request=None,
+                    notif_type='wishlist_match',
+                    message=f'A matching item "{item.name}" was listed in your community.',
+                )
+                notified_users.add(entry.user_id)
+                count += 1
+        return count
+
+
+class Wishlist(models.Model):
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        related_name='wishlists',
+        null=True,
+        blank=True,
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='wishlists',
+    )
+    keyword = models.CharField(max_length=60, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        constraints = [
+            models.CheckConstraint(
+                condition=~Q(category__isnull=True, keyword=''),
+                name='wishlist_category_or_keyword',
+            ),
+        ]
+
+    def __str__(self):
+        return self.keyword or (self.category.name if self.category else 'Wishlist')

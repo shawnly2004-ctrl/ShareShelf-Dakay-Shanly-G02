@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.forms import BaseInlineFormSet, inlineformset_factory
 from django.utils import timezone
 
-from .models import AvailabilityWindow, BorrowRequest, Item, Rating
+from .models import AvailabilityWindow, BorrowRequest, Item, Rating, Wishlist
 
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 ALLOWED_EXT = {'.jpg', '.jpeg', '.png'}
@@ -217,3 +217,39 @@ class RatingForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['review_text'].widget.attrs['class'] = 'form-control'
+
+
+class WishlistForm(forms.ModelForm):
+    class Meta:
+        model = Wishlist
+        fields = ['category', 'keyword']
+        widgets = {
+            'category': forms.Select(attrs={'class': 'form-select'}),
+            'keyword': forms.TextInput(attrs={
+                'class': 'form-control',
+                'maxlength': 60,
+                'placeholder': 'e.g. drill',
+            }),
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        self.fields['category'].required = False
+        self.fields['keyword'].required = False
+
+    def clean(self):
+        cleaned = super().clean()
+        category = cleaned.get('category')
+        keyword = (cleaned.get('keyword') or '').strip()
+        cleaned['keyword'] = keyword
+        if not category and not keyword:
+            raise ValidationError("Choose a category or enter a keyword.")
+        if self.user and not self.instance.pk:
+            active_count = Wishlist.objects.filter(
+                user=self.user,
+                is_active=True,
+            ).count()
+            if active_count >= 10:
+                raise ValidationError("You can have at most 10 active wishlist entries.")
+        return cleaned

@@ -10,7 +10,13 @@ from django.utils import timezone
 from django.utils.datastructures import MultiValueDict
 from PIL import Image
 
-from .forms import AvailabilityWindowForm, BorrowRequestForm, ItemForm, WindowFormSet
+from .forms import (
+    AvailabilityWindowForm,
+    BorrowRequestForm,
+    ItemForm,
+    WishlistForm,
+    WindowFormSet,
+)
 from .models import (
     AvailabilityWindow,
     BorrowRequest,
@@ -20,6 +26,7 @@ from .models import (
     ItemPhoto,
     Notification,
     Rating,
+    Wishlist,
 )
 
 
@@ -829,3 +836,124 @@ class NotificationTests(TestCase):
             reverse('notification_mark_read', args=[notification.pk]),
         )
         self.assertEqual(response.status_code, 404)
+
+
+class WishlistTests(TestCase):
+    def setUp(self):
+        from accounts.models import Community
+
+        self.community = Community.objects.create(
+            name='Wishlist Community',
+            barangay='Wishlist Community',
+            city='Test City',
+        )
+        self.owner = get_user_model().objects.create_user(
+            email='wishlist-owner@example.com',
+            password='test-password',
+            community=self.community,
+            user_type='lender',
+        )
+        self.borrower = get_user_model().objects.create_user(
+            email='wishlist-borrower@example.com',
+            password='test-password',
+            community=self.community,
+            user_type='borrower',
+        )
+        self.category = Category.objects.create(name='Wishlist tools')
+
+    def test_category_or_keyword_required_and_active_limit(self):
+        form = WishlistForm(data={'category': '', 'keyword': ''})
+        self.assertFalse(form.is_valid())
+        self.assertIn('Choose a category or enter a keyword.', str(form.errors))
+
+        self.client.force_login(self.borrower)
+        for index in range(10):
+            Wishlist.objects.create(
+                user=self.borrower,
+                keyword=f'tool-{index}',
+                is_active=True,
+            )
+        form = WishlistForm(
+            data={'category': str(self.category.pk), 'keyword': ''},
+            user=self.borrower,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn('at most 10 active wishlist entries', str(form.errors))
+
+    def test_new_item_matches_category_or_keyword_and_same_community(self):
+        from accounts.models import Community
+
+        wishlist = Wishlist.objects.create(
+            user=self.borrower,
+            category=self.category,
+            keyword='drill',
+            is_active=True,
+        )
+        item = Item.objects.create(
+            owner=self.owner,
+            category=self.category,
+            name='Cordless Drill',
+            description='For household projects',
+        )
+        Notification.match_wishlist(item)
+
+        self.assertTrue(Notification.objects.filter(
+            user=self.borrower,
+            notif_type='wishlist_match',
+            request=None,
+        ).exists())
+
+        outsider = get_user_model().objects.create_user(
+            email='wishlist-outsider@example.com',
+            password='test-password',
+            community=Community.objects.create(
+                name='Other Wishlist Community',
+                barangay='Other',
+                city='Test City',
+            ),
+            user_type='borrower',
+        )
+        outsider_wishlist = Wishlist.objects.create(
+            user=outsider,
+            category=self.category,
+            keyword='drill',
+            is_active=True,
+        )
+        outsider_count = Notification.objects.count()
+        Notification.match_wishlist(item)
+        self.assertEqual(Notification.objects.count(), outsider_count)
+        self.assertFalse(Notification.objects.filter(
+            user=outsider,
+            notif_type='wishlist_match',
+        ).exists())
+
+    def test_wishlist_toggle_and_delete(self):
+        self.client.force_login(self.borrower)
+        response = self.client.get(reverse('wishlists'))
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.post(reverse('wishlists'), {
+            'category': self.category.pk,
+            'keyword': 'hand saw',
+        })
+        self.assertRedirects(response, reverse('wishlists'))
+        self.assertTrue(Wishlist.objects.filter(
+            user=self.borrower,
+            category=self.category,
+            keyword='hand saw',
+        ).exists())
+
+        entry = Wishlist.objects.create(
+            user=self.borrower,
+            keyword='ladder',
+            is_active=True,
+        )
+
+        response = self.client.post(reverse('wishlist_toggle', args=[entry.pk]))
+        self.assertRedirects(response, reverse('wishlists'))
+        entry.refresh_from_db()
+        self.assertFalse(entry.is_active)
+
+        response = self.client.post(reverse('wishlist_delete', args=[entry.pk]))
+        self.assertRedirects(response, reverse('wishlists'))
+        self.assertFalse(Wishlist.objects.filter(pk=entry.pk).exists())

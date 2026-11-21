@@ -33,5 +33,16 @@ urlpatterns = [
         views.notifications_mark_all_read_view,
         name='notifications_mark_all_read',
     ),
+    path('wishlists/', views.wishlists_view, name='wishlists'),
+    path(
+        'wishlists/<int:pk>/toggle/',
+        views.wishlist_toggle_view,
+        name='wishlist_toggle',
+    ),
+    path(
+        'wishlists/<int:pk>/delete/',
+        views.wishlist_delete_view,
+        name='wishlist_delete',
+    ),
     path('requests/admin/', views.admin_requests_view, name='admin_requests'),
 ]
