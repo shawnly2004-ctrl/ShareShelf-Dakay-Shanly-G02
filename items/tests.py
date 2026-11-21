@@ -18,6 +18,7 @@ from .models import (
     HandoffConfirmation,
     Item,
     ItemPhoto,
+    Notification,
     Rating,
 )
 
@@ -720,3 +721,111 @@ class RatingTests(TestCase):
         self.assertEqual(str(self.owner.avg_rating), '2.00')
         self.assertEqual(self.owner.rating_count, 5)
         self.assertEqual(self.owner.account_status, 'flagged')
+
+
+class NotificationTests(TestCase):
+    def setUp(self):
+        from accounts.models import Community
+
+        today = timezone.localdate()
+        self.community = Community.objects.create(
+            name='Notification Community',
+            barangay='Notification Community',
+            city='Test City',
+        )
+        self.owner = get_user_model().objects.create_user(
+            email='notify-owner@example.com',
+            password='test-password',
+            community=self.community,
+            user_type='lender',
+        )
+        self.borrower = get_user_model().objects.create_user(
+            email='notify-borrower@example.com',
+            password='test-password',
+            community=self.community,
+            user_type='borrower',
+        )
+        self.category = Category.objects.create(name='Notification tools')
+        self.item = Item.objects.create(
+            owner=self.owner,
+            category=self.category,
+            name='Notification item',
+            description='A test item',
+        )
+        AvailabilityWindow.objects.create(
+            item=self.item,
+            start_date=today,
+            end_date=today + timedelta(days=7),
+        )
+        self.request = BorrowRequest.objects.create(
+            item=self.item,
+            borrower=self.borrower,
+            start_date=today,
+            end_date=today + timedelta(days=2),
+            status='pending',
+        )
+
+    def test_request_submission_creates_owner_notification(self):
+        Notification.objects.create(
+            user=self.owner,
+            request=self.request,
+            notif_type='request_received',
+            message=f'{self.borrower.email} requested "{self.item.name}".',
+        )
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse('notifications'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'requested')
+
+    def test_unread_count_and_mark_read(self):
+        notification = Notification.objects.create(
+            user=self.owner,
+            request=self.request,
+            notif_type='request_received',
+            message=f'New request for "{self.item.name}".',
+        )
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse('notification_mark_read', args=[notification.pk]),
+        )
+        self.assertRedirects(response, reverse('notifications'))
+        notification.refresh_from_db()
+        self.assertTrue(notification.is_read)
+
+    def test_due_reminder_and_overdue_notifications(self):
+        today = timezone.localdate()
+        self.request.status = 'borrowed'
+        self.request.end_date = today + timedelta(days=1)
+        self.request.save(update_fields=['status', 'end_date'])
+
+        count = Notification.send_due_reminders()
+        self.assertEqual(count, 1)
+        self.assertTrue(Notification.objects.filter(
+            user=self.borrower,
+            request=self.request,
+            notif_type='due_reminder',
+        ).exists())
+
+        self.request.end_date = today - timedelta(days=1)
+        self.request.start_date = today - timedelta(days=2)
+        self.request.save(update_fields=['status', 'end_date', 'start_date'])
+        count = BorrowRequest.mark_overdue()
+        self.assertEqual(count, 1)
+        self.assertTrue(Notification.objects.filter(
+            user=self.borrower,
+            request=self.request,
+            notif_type='overdue',
+        ).exists())
+
+    def test_user_cannot_read_another_users_notification(self):
+        notification = Notification.objects.create(
+            user=self.owner,
+            request=self.request,
+            notif_type='request_received',
+            message='Private notification.',
+        )
+        self.client.force_login(self.borrower)
+        response = self.client.post(
+            reverse('notification_mark_read', args=[notification.pk]),
+        )
+        self.assertEqual(response.status_code, 404)

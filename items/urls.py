@@ -22,5 +22,16 @@ urlpatterns = [
         name='handoff_confirm',
     ),
     path('requests/<int:pk>/rating/', views.rating_create_view, name='rating_create'),
+    path('notifications/', views.notifications_view, name='notifications'),
+    path(
+        'notifications/<int:pk>/read/',
+        views.notification_mark_read_view,
+        name='notification_mark_read',
+    ),
+    path(
+        'notifications/read-all/',
+        views.notifications_mark_all_read_view,
+        name='notifications_mark_all_read',
+    ),
     path('requests/admin/', views.admin_requests_view, name='admin_requests'),
 ]

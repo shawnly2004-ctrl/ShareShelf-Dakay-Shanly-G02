@@ -151,18 +151,37 @@ class BorrowRequest(models.Model):
 
     @classmethod
     def expire_stale(cls):
-        return cls.objects.filter(
+        stale_requests = list(cls.objects.filter(
             status='pending',
             expires_at__lt=timezone.now(),
-        ).update(status='expired')
+        ).select_related('item', 'borrower', 'item__owner'))
+        for borrow_request in stale_requests:
+            borrow_request.status = 'expired'
+            borrow_request.save(update_fields=['status'])
+            Notification.create_for_participants(
+                borrow_request,
+                'request_expired',
+                f'The request for "{borrow_request.item.name}" has expired.',
+            )
+        return len(stale_requests)
 
     @classmethod
     def mark_overdue(cls):
         today = timezone.localdate()
-        return cls.objects.filter(
+        overdue_requests = list(cls.objects.filter(
             status='borrowed',
             end_date__lt=today,
-        ).update(status='overdue')
+        ).select_related('item', 'borrower', 'item__owner'))
+        for borrow_request in overdue_requests:
+            borrow_request.status = 'overdue'
+            borrow_request.save(update_fields=['status'])
+            Notification.create_for_user(
+                borrow_request.borrower,
+                borrow_request,
+                'overdue',
+                f'The return for "{borrow_request.item.name}" is overdue.',
+            )
+        return len(overdue_requests)
 
 
 class HandoffConfirmation(models.Model):
@@ -255,3 +274,90 @@ class Rating(models.Model):
             'rating_count',
             'account_status',
         ])
+
+
+class Notification(models.Model):
+    NOTIF_TYPE_CHOICES = [
+        ('request_received', 'Request received'),
+        ('request_approved', 'Request approved'),
+        ('request_declined', 'Request declined'),
+        ('request_expired', 'Request expired'),
+        ('pickup_confirmed', 'Pickup confirmed'),
+        ('return_confirmed', 'Return confirmed'),
+        ('due_reminder', 'Due reminder'),
+        ('overdue', 'Overdue'),
+        ('rating_received', 'Rating received'),
+        ('wishlist_match', 'Wishlist match'),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='notifications',
+    )
+    request = models.ForeignKey(
+        BorrowRequest,
+        on_delete=models.CASCADE,
+        related_name='notifications',
+        null=True,
+        blank=True,
+    )
+    notif_type = models.CharField(max_length=30, choices=NOTIF_TYPE_CHOICES)
+    message = models.CharField(max_length=255)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.notif_type} for {self.user.email}"
+
+    @classmethod
+    def create_for_user(cls, user, borrow_request, notif_type, message):
+        return cls.objects.create(
+            user=user,
+            request=borrow_request,
+            notif_type=notif_type,
+            message=message,
+        )
+
+    @classmethod
+    def create_for_participants(cls, borrow_request, notif_type, message):
+        cls.create_for_user(
+            borrow_request.borrower,
+            borrow_request,
+            notif_type,
+            message,
+        )
+        cls.create_for_user(
+            borrow_request.item.owner,
+            borrow_request,
+            notif_type,
+            message,
+        )
+
+    @classmethod
+    def send_due_reminders(cls):
+        from django.utils import timezone
+
+        tomorrow = timezone.localdate() + timedelta(days=1)
+        requests = BorrowRequest.objects.filter(
+            status='borrowed',
+            end_date=tomorrow,
+        ).select_related('item', 'borrower')
+        count = 0
+        for borrow_request in requests:
+            if not cls.objects.filter(
+                user=borrow_request.borrower,
+                request=borrow_request,
+                notif_type='due_reminder',
+            ).exists():
+                cls.create_for_user(
+                    borrow_request.borrower,
+                    borrow_request,
+                    'due_reminder',
+                    f'Return "{borrow_request.item.name}" tomorrow.',
+                )
+                count += 1
+        return count
