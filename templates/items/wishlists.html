@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block title %}Wishlist | ShareShelf{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h3 class="mb-0">My Wishlist</h3>
+  <span class="badge bg-primary">{{ active_count }} / 10 active</span>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-5">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5>Add wishlist entry</h5>
+        <form method="post">
+          {% csrf_token %}
+          {{ form.non_field_errors }}
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.category.id_for_label }}">Category</label>
+            {{ form.category }}
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.keyword.id_for_label }}">Keyword</label>
+            {{ form.keyword }}
+          </div>
+          <button class="btn btn-primary">Add entry</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-7">
+    <div class="card shadow-sm">
+      <div class="list-group list-group-flush">
+        {% for entry in entries %}
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+          <div>
+            {% if entry.category %}<span class="badge bg-info text-dark">{{ entry.category.name }}</span>{% endif %}
+            {% if entry.keyword %}<strong class="ms-1">{{ entry.keyword }}</strong>{% endif %}
+            {% if entry.is_active %}<span class="badge bg-success ms-2">Active</span>{% else %}<span class="badge bg-secondary ms-2">Inactive</span>{% endif %}
+          </div>
+          <div class="d-flex gap-1">
+            <form method="post" action="{% url 'wishlist_toggle' entry.pk %}">
+              {% csrf_token %}
+              <button class="btn btn-sm btn-outline-primary">{% if entry.is_active %}Deactivate{% else %}Activate{% endif %}</button>
+            </form>
+            <form method="post" action="{% url 'wishlist_delete' entry.pk %}">
+              {% csrf_token %}
+              <button class="btn btn-sm btn-outline-danger">Delete</button>
+            </form>
+          </div>
+        </div>
+        {% empty %}
+        <div class="list-group-item text-center text-muted py-4">No wishlist entries yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

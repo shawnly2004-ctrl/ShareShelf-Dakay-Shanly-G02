@@ -10,7 +10,13 @@ from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
 from accounts.decorators import role_required
-from .forms import BorrowRequestForm, ItemForm, RatingForm, WindowFormSet
+from .forms import (
+    BorrowRequestForm,
+    ItemForm,
+    RatingForm,
+    WishlistForm,
+    WindowFormSet,
+)
 from .models import (
     BorrowRequest,
     Category,
@@ -19,6 +25,7 @@ from .models import (
     ItemPhoto,
     Notification,
     Rating,
+    Wishlist,
 )
 
 
@@ -71,6 +78,7 @@ def item_create_view(request):
                 formset.instance = item
                 formset.save()
                 _add_photos(item, form.cleaned_data['photos'])
+                Notification.match_wishlist(item)
             messages.success(request, f'"{item.name}" has been listed.')
             return redirect('my_items')
         messages.error(request, "Please fix the errors below.")
@@ -509,6 +517,25 @@ def handoff_confirm_view(request, pk, handoff_type):
     return redirect('my_requests')
 
 
+@role_required('admin')
+def admin_requests_view(request):
+    BorrowRequest.expire_stale()
+    BorrowRequest.mark_overdue()
+    requests = BorrowRequest.objects.select_related('item', 'borrower', 'item__owner')
+    status = request.GET.get('status', '')
+    if status in dict(BorrowRequest.STATUS_CHOICES):
+        requests = requests.filter(status=status)
+    page_obj = Paginator(requests, 10).get_page(request.GET.get('page'))
+    params = request.GET.copy()
+    params.pop('page', None)
+    return render(request, 'items/admin_requests.html', {
+        'page_obj': page_obj,
+        'status': status,
+        'statuses': BorrowRequest.STATUS_CHOICES,
+        'querystring': params.urlencode(),
+    })
+
+
 @role_required('member')
 def notifications_view(request):
     BorrowRequest.expire_stale()
@@ -541,20 +568,51 @@ def notifications_mark_all_read_view(request):
     return redirect('notifications')
 
 
-@role_required('admin')
-def admin_requests_view(request):
-    BorrowRequest.expire_stale()
-    BorrowRequest.mark_overdue()
-    requests = BorrowRequest.objects.select_related('item', 'borrower', 'item__owner')
-    status = request.GET.get('status', '')
-    if status in dict(BorrowRequest.STATUS_CHOICES):
-        requests = requests.filter(status=status)
-    page_obj = Paginator(requests, 10).get_page(request.GET.get('page'))
-    params = request.GET.copy()
-    params.pop('page', None)
-    return render(request, 'items/admin_requests.html', {
-        'page_obj': page_obj,
-        'status': status,
-        'statuses': BorrowRequest.STATUS_CHOICES,
-        'querystring': params.urlencode(),
+@role_required('member')
+def wishlists_view(request):
+    if request.user.user_type == 'lender':
+        messages.error(request, "Change your role to Borrower or Both to use wishlists.")
+        return redirect('profile_edit')
+
+    entries = Wishlist.objects.filter(user=request.user).select_related('category')
+    form = WishlistForm(request.POST or None, user=request.user)
+    if request.method == 'POST':
+        if form.is_valid():
+            entry = form.save(commit=False)
+            entry.user = request.user
+            entry.save()
+            messages.success(request, "Wishlist entry added.")
+            return redirect('wishlists')
+        messages.error(request, "Please fix the errors below.")
+
+    return render(request, 'items/wishlists.html', {
+        'entries': entries,
+        'form': form,
+        'active_count': entries.filter(is_active=True).count(),
     })
+
+
+@role_required('member')
+@require_POST
+def wishlist_toggle_view(request, pk):
+    entry = get_object_or_404(Wishlist, pk=pk, user=request.user)
+    if entry.is_active:
+        entry.is_active = False
+    else:
+        active_count = Wishlist.objects.filter(user=request.user, is_active=True).count()
+        if active_count >= 10:
+            messages.error(request, "You can have at most 10 active wishlist entries.")
+            return redirect('wishlists')
+        entry.is_active = True
+    entry.save(update_fields=['is_active'])
+    messages.success(request, "Wishlist entry updated.")
+    return redirect('wishlists')
+
+
+@role_required('member')
+@require_POST
+def wishlist_delete_view(request, pk):
+    entry = get_object_or_404(Wishlist, pk=pk, user=request.user)
+    entry.delete()
+    messages.success(request, "Wishlist entry deleted.")
+    return redirect('wishlists')
