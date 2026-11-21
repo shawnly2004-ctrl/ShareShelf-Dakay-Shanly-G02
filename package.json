@@ -1,0 +1,28 @@
+{
+  "name": "shareshelf",
+  "version": "1.0.0",
+  "description": "A peer-to-peer lending library for everyday tools and equipment. Residents list items they rarely use, and neighbors borrow them instead of buying new ones.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "playwright test",
+    "test:e2e": "playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shawnly2004-ctrl/ShareShelf-Dakay-Shanly-G02.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/shawnly2004-ctrl/ShareShelf-Dakay-Shanly-G02/issues"
+  },
+  "homepage": "https://github.com/shawnly2004-ctrl/ShareShelf-Dakay-Shanly-G02#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.65.1"
+  }
+}
