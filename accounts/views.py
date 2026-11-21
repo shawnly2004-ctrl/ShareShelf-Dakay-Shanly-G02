@@ -13,7 +13,7 @@ from django.shortcuts import get_object_or_404
 
 from .forms import RegisterForm, LoginForm
 from django.utils import timezone
-from items.models import BorrowRequest, Item
+from items.models import BorrowRequest, Item, Rating
 
 
 def register_view(request):
@@ -118,7 +118,13 @@ def member_dashboard_view(request):
 
 @login_required
 def profile_view(request):
-    return render(request, 'accounts/profile.html')
+    return render(request, 'accounts/profile.html', {
+        'received_ratings': Rating.objects.filter(ratee=request.user).select_related(
+            'rater',
+            'request',
+            'request__item',
+        )[:10],
+    })
 
 
 @login_required

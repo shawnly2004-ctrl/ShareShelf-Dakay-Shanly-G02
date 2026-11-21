@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.forms import BaseInlineFormSet, inlineformset_factory
 from django.utils import timezone
 
-from .models import AvailabilityWindow, BorrowRequest, Item
+from .models import AvailabilityWindow, BorrowRequest, Item, Rating
 
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 ALLOWED_EXT = {'.jpg', '.jpeg', '.png'}
@@ -195,3 +195,25 @@ class BorrowRequestForm(forms.ModelForm):
                 f"You can have at most {MAX_ACTIVE_REQUESTS} active requests at a time."
             )
         return cleaned
+
+
+class RatingForm(forms.ModelForm):
+    score = forms.ChoiceField(
+        choices=[(score, str(score)) for score in range(1, 6)],
+        widget=forms.RadioSelect,
+    )
+
+    class Meta:
+        model = Rating
+        fields = ['score', 'review_text']
+        widgets = {
+            'review_text': forms.Textarea(attrs={
+                'rows': 3,
+                'maxlength': 300,
+                'placeholder': 'Optional review (maximum 300 characters)',
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['review_text'].widget.attrs['class'] = 'form-control'
