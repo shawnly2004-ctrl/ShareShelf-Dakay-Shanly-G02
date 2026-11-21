@@ -11,7 +11,15 @@ from django.views.decorators.http import require_POST
 
 from accounts.decorators import role_required
 from .forms import BorrowRequestForm, ItemForm, RatingForm, WindowFormSet
-from .models import BorrowRequest, Category, HandoffConfirmation, Item, ItemPhoto, Rating
+from .models import (
+    BorrowRequest,
+    Category,
+    HandoffConfirmation,
+    Item,
+    ItemPhoto,
+    Notification,
+    Rating,
+)
 
 
 def _can_lend(user):
@@ -262,6 +270,11 @@ def request_create_view(request, pk):
             borrow_request.item = item
             borrow_request.borrower = request.user
             borrow_request.save()
+            Notification.create_for_participants(
+                borrow_request,
+                'request_received',
+                f'{request.user.first_name or request.user.email} requested "{item.name}".',
+            )
             messages.success(
                 request,
                 f'Request sent to {item.owner.first_name} for "{item.name}".',
@@ -323,16 +336,35 @@ def request_respond_view(request, pk):
             borrow_request.status = 'approved'
             borrow_request.decided_at = now
             borrow_request.save(update_fields=['status', 'decided_at'])
-            BorrowRequest.objects.filter(
+            Notification.create_for_participants(
+                borrow_request,
+                'request_approved',
+                f'Your request for "{borrow_request.item.name}" was approved.',
+            )
+            overlapping_requests = list(BorrowRequest.objects.filter(
                 item=borrow_request.item,
                 status='pending',
                 start_date__lte=borrow_request.end_date,
                 end_date__gte=borrow_request.start_date,
-            ).exclude(pk=borrow_request.pk).update(status='declined', decided_at=now)
+            ).exclude(pk=borrow_request.pk).select_related('item', 'borrower', 'item__owner'))
+            for overlapping_request in overlapping_requests:
+                overlapping_request.status = 'declined'
+                overlapping_request.decided_at = now
+                overlapping_request.save(update_fields=['status', 'decided_at'])
+                Notification.create_for_participants(
+                    overlapping_request,
+                    'request_declined',
+                    f'Your request for "{overlapping_request.item.name}" was declined.',
+                )
         else:
             borrow_request.status = 'declined'
             borrow_request.decided_at = now
             borrow_request.save(update_fields=['status', 'decided_at'])
+            Notification.create_for_participants(
+                borrow_request,
+                'request_declined',
+                f'Your request for "{borrow_request.item.name}" was declined.',
+            )
 
     messages.success(
         request,
@@ -389,6 +421,12 @@ def rating_create_view(request, pk):
             rating.rater = request.user
             rating.ratee = ratee
             rating.save()
+            Notification.create_for_user(
+                ratee,
+                borrow_request,
+                'rating_received',
+                f'You received a {rating.score}-star rating for "{borrow_request.item.name}".',
+            )
             messages.success(request, "Rating submitted successfully.")
             return redirect(destination)
         messages.error(request, "Please fix the errors below.")
@@ -446,11 +484,21 @@ def handoff_confirm_view(request, pk, handoff_type):
                 borrow_request.save(update_fields=['status'])
                 borrow_request.item.status = 'on_loan'
                 borrow_request.item.save(update_fields=['status', 'updated_at'])
+                Notification.create_for_participants(
+                    borrow_request,
+                    'pickup_confirmed',
+                    f'Pickup for "{borrow_request.item.name}" was confirmed.',
+                )
             elif handoff_type == 'return' and borrow_request.status in ('borrowed', 'overdue'):
                 borrow_request.status = 'completed'
                 borrow_request.save(update_fields=['status'])
                 borrow_request.item.status = 'available'
                 borrow_request.item.save(update_fields=['status', 'updated_at'])
+                Notification.create_for_participants(
+                    borrow_request,
+                    'return_confirmed',
+                    f'Return for "{borrow_request.item.name}" was confirmed.',
+                )
 
     messages.success(
         request,
@@ -459,6 +507,38 @@ def handoff_confirm_view(request, pk, handoff_type):
     if borrow_request.item.owner_id == request.user.id:
         return redirect('incoming_requests')
     return redirect('my_requests')
+
+
+@role_required('member')
+def notifications_view(request):
+    BorrowRequest.expire_stale()
+    BorrowRequest.mark_overdue()
+    Notification.send_due_reminders()
+    notifications = Notification.objects.filter(user=request.user).select_related(
+        'request',
+        'request__item',
+    )
+    return render(request, 'items/notifications.html', {
+        'notifications': notifications,
+        'unread_count': notifications.filter(is_read=False).count(),
+    })
+
+
+@role_required('member')
+@require_POST
+def notification_mark_read_view(request, pk):
+    notification = get_object_or_404(Notification, pk=pk, user=request.user)
+    notification.is_read = True
+    notification.save(update_fields=['is_read'])
+    return redirect('notifications')
+
+
+@role_required('member')
+@require_POST
+def notifications_mark_all_read_view(request):
+    Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+    messages.success(request, "All notifications marked as read.")
+    return redirect('notifications')
 
 
 @role_required('admin')
