@@ -22,6 +22,10 @@ A peer-to-peer lending library for everyday tools and equipment. Residents list 
 - **Item Listing** for lenders, including categories, 1 to 5 photos, availability windows, editing, unlisting, and deletion rules
 - **Browse and Search** for items in the user's community, filtered by category and item name
 - **Borrow Requests** with date and availability validation, owner approval or decline, borrower cancellation, expiry, and active-request limits
+- **Pickup/Return Confirmation** with two-party handoff confirmation and status transitions
+- **Ratings and Reviews** with completed-transaction eligibility, average recalculation, and account flagging
+- **Notifications** with request, handoff, rating, due-date, overdue, and wishlist alerts
+- **Wishlist** entries with category or keyword matching, the 10-active-entry limit, and same-community alerts
 
 The SDD's lender/borrower/both role is implemented as `user_type`. The separate `role` field identifies Admin versus Member accounts and supports the two-dashboard design.
 
