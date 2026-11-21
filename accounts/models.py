@@ -39,7 +39,7 @@ class User(AbstractUser):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='member')
     user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='both')
     contact_number = models.CharField(max_length=20, blank=True)
-    community = models.ForeignKey(Community, on_delete=models.PROTECT, null=True, blank=True, related_name='residents')
+    community = models.ForeignKey(Community, on_delete=models.PROTECT, related_name='residents')
     profile_photo = models.ImageField(upload_to='profiles/', blank=True, null=True)
     avg_rating = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True)
     rating_count = models.PositiveIntegerField(default=0)
@@ -48,6 +48,16 @@ class User(AbstractUser):
         choices=[('active', 'Active'), ('flagged', 'Flagged')],
         default='active',
     )
+    address_detail = models.CharField(max_length=200, blank=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    language_pref = models.CharField(
+        max_length=3,
+        choices=[('en', 'English'), ('fil', 'Filipino')],
+        default='en',
+    )
+    failed_login_count = models.PositiveIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []

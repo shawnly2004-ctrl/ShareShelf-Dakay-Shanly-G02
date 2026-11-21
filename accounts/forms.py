@@ -14,7 +14,8 @@ class RegisterForm(forms.ModelForm):
     class Meta:
         model = User
         fields = ['first_name', 'last_name', 'email', 'contact_number',
-          'community', 'user_type']
+          'community', 'user_type', 'address_detail', 'latitude', 'longitude',
+          'language_pref']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -76,7 +77,8 @@ class ProfileForm(forms.ModelForm):
     class Meta:
         model = User
         fields = ['first_name', 'last_name', 'email', 'contact_number',
-          'community', 'user_type', 'profile_photo']
+          'community', 'user_type', 'address_detail', 'latitude', 'longitude',
+          'language_pref', 'profile_photo']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

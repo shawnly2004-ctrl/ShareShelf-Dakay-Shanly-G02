@@ -5,6 +5,7 @@ from django.shortcuts import render, redirect
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from .decorators import role_required
 from .forms import RegisterForm, LoginForm, ProfileForm
 from django.core.paginator import Paginator
@@ -12,6 +13,7 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404
 
 from .forms import RegisterForm, LoginForm
+from datetime import timedelta
 from django.utils import timezone
 from items.models import BorrowRequest, Item, Rating
 
@@ -36,8 +38,20 @@ def login_view(request):
 
     form = LoginForm(request, data=request.POST or None)
     if request.method == 'POST':
+        email = request.POST.get('username', '').strip().lower()
+        user = get_user_model().objects.filter(email__iexact=email).first()
+        if user and user.locked_until and user.locked_until > timezone.now():
+            messages.error(
+                request,
+                "This account is temporarily locked. Try again after 15 minutes.",
+            )
+            return render(request, 'accounts/login.html', {'form': form})
+
         if form.is_valid():
             user = form.get_user()
+            user.failed_login_count = 0
+            user.locked_until = None
+            user.save(update_fields=['failed_login_count', 'locked_until'])
             login(request, user)
             messages.success(request, f"Welcome back, {user.first_name or user.email}!")
 
@@ -46,6 +60,13 @@ def login_view(request):
             if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
                 return redirect(next_url)
             return redirect('dashboard')
+        if user:
+            user.failed_login_count += 1
+            if user.failed_login_count >= 5:
+                user.locked_until = timezone.now() + timedelta(minutes=15)
+                user.failed_login_count = 0
+                messages.error(request, "Too many failed attempts. Account locked for 15 minutes.")
+            user.save(update_fields=['failed_login_count', 'locked_until'])
         messages.error(request, "Invalid email or password.")
     return render(request, 'accounts/login.html', {'form': form})
 
