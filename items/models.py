@@ -191,3 +191,67 @@ class HandoffConfirmation(models.Model):
 
     def __str__(self):
         return f"{self.handoff_type.title()} confirmation for request {self.request_id}"
+
+
+class Rating(models.Model):
+    request = models.ForeignKey(
+        BorrowRequest,
+        on_delete=models.CASCADE,
+        related_name='ratings',
+    )
+    rater = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='ratings_given',
+    )
+    ratee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='ratings_received',
+    )
+    score = models.PositiveSmallIntegerField()
+    review_text = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(score__gte=1, score__lte=5),
+                name='rating_score_between_1_and_5',
+            ),
+            models.CheckConstraint(
+                condition=~Q(rater=F('ratee')),
+                name='rating_rater_not_ratee',
+            ),
+            models.UniqueConstraint(
+                fields=['request', 'rater'],
+                name='unique_request_rater',
+            ),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.rater.email} rated {self.ratee.email}: {self.score}/5"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        from django.db.models import Avg
+
+        aggregate = Rating.objects.filter(ratee=self.ratee).aggregate(
+            average=Avg('score'),
+            count=models.Count('pk'),
+        )
+        average = aggregate['average']
+        count = aggregate['count']
+        self.ratee.avg_rating = average if average is not None else None
+        self.ratee.rating_count = count
+        self.ratee.account_status = (
+            'flagged'
+            if count >= 5 and average is not None and average < 2.5
+            else 'active'
+        )
+        self.ratee.save(update_fields=[
+            'avg_rating',
+            'rating_count',
+            'account_status',
+        ])
