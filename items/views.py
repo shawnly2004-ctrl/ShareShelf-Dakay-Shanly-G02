@@ -129,8 +129,10 @@ def item_edit_view(request, pk):
 @require_POST
 def item_toggle_view(request, pk):
     item = get_object_or_404(Item, pk=pk, owner=request.user)
-    if item.status == 'on_loan':
-        messages.error(request, "This item is on loan and can't be unlisted.")
+    if item.status == 'on_loan' or item.requests.filter(
+        status__in=BorrowRequest.BLOCKING_STATUSES,
+    ).exists():
+        messages.error(request, "This item has an active loan and can't be unlisted.")
         return redirect('my_items')
     item.status = 'unlisted' if item.status == 'available' else 'available'
     item.save(update_fields=['status', 'updated_at'])

@@ -416,6 +416,17 @@ class BorrowRequestTests(TestCase):
         blocking.refresh_from_db()
         self.assertEqual(blocking.status, 'approved')
 
+    def test_owner_cannot_unlist_item_with_approved_request(self):
+        approved = self.make_request(status='approved')
+        self.assertEqual(approved.status, 'approved')
+        self.client.force_login(self.owner)
+
+        response = self.client.post(reverse('item_toggle', args=[self.item.pk]))
+
+        self.assertRedirects(response, reverse('my_items'))
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, 'available')
+
     def test_request_access_rules_and_owner_only_responses(self):
         self.client.force_login(self.borrower)
         own_item = self.item
