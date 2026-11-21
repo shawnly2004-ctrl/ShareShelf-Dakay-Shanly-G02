@@ -12,13 +12,18 @@ A peer-to-peer lending library for everyday tools and equipment. Residents list 
 - PostgreSQL hosted on Supabase
 - Bootstrap 5
 
-## Features (Activity 1: Account Feature)
+## Features
 
 - **Registration** with validation (required fields, email format, unique email, password confirmation) and hashed passwords
 - **Login / Logout** using email as the username, with error messages for invalid credentials
 - **Role-based dashboards** for Admin and Member, with URL access control so one role cannot open the other's pages
 - **User profile** where members view and edit their own details and profile photo
 - **Manage Users** (Admin only) with search, filters, and activate/deactivate
+- **Item Listing** for lenders, including categories, 1 to 5 photos, availability windows, editing, unlisting, and deletion rules
+- **Browse and Search** for items in the user's community, filtered by category and item name
+- **Borrow Requests** with date and availability validation, owner approval or decline, borrower cancellation, expiry, and active-request limits
+
+The SDD's lender/borrower/both role is implemented as `user_type`. The separate `role` field identifies Admin versus Member accounts and supports the two-dashboard design.
 
 ## User Roles
 
