@@ -6,6 +6,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from .forms import ProfileForm, RegisterForm
 from .validators import LetterAndNumberValidator
 
 
@@ -137,6 +138,7 @@ class SDDAccountFeatureTests(TestCase):
         user.refresh_from_db()
         self.assertEqual(user.language_pref, 'fil')
         self.assertEqual(user.address_detail, 'Purok 2')
+        self.assertEqual(user.contact_number, '09178888888')
 
         response = self.client.get(reverse('profile'))
         self.assertContains(response, 'Filipino')
@@ -155,3 +157,61 @@ class SDDAccountFeatureTests(TestCase):
         )
         self.assertEqual(user.community_id, self.community.pk)
         self.assertIn(user.language_pref, ('en', 'fil'))
+
+    def test_contact_number_required_and_digits_only_in_registration_and_profile(self):
+        registration_data = {
+            'first_name': 'Test',
+            'last_name': 'Member',
+            'email': 'new-member@example.com',
+            'community': str(self.community.pk),
+            'user_type': 'both',
+            'contact_number': '',
+            'language_pref': 'en',
+            'password1': 'ShareShelf2026',
+            'password2': 'ShareShelf2026',
+        }
+        form = RegisterForm(data=registration_data)
+        self.assertFalse(form.is_valid())
+        self.assertIn('contact_number', form.errors)
+
+        registration_data['contact_number'] = '09AB123'
+        form = RegisterForm(data=registration_data)
+        self.assertFalse(form.is_valid())
+        self.assertIn('digits only', str(form.errors['contact_number']))
+
+        registration_data['contact_number'] = '09171234567'
+        form = RegisterForm(data=registration_data)
+        self.assertTrue(form.is_valid(), form.errors)
+
+        user = get_user_model().objects.create_user(
+            email='profile-contact@example.com',
+            password='ShareShelf2026',
+            first_name='Contact',
+            last_name='Tester',
+            community=self.community,
+            contact_number='09170000000',
+        )
+        profile_data = {
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'email': user.email,
+            'community': str(self.community.pk),
+            'user_type': user.user_type,
+            'contact_number': '',
+            'address_detail': '',
+            'latitude': '',
+            'longitude': '',
+            'language_pref': 'en',
+        }
+        form = ProfileForm(data=profile_data, instance=user)
+        self.assertFalse(form.is_valid())
+        self.assertIn('contact_number', form.errors)
+
+        profile_data['contact_number'] = 'phone123'
+        form = ProfileForm(data=profile_data, instance=user)
+        self.assertFalse(form.is_valid())
+        self.assertIn('digits only', str(form.errors['contact_number']))
+
+        profile_data['contact_number'] = '09178888888'
+        form = ProfileForm(data=profile_data, instance=user)
+        self.assertTrue(form.is_valid(), form.errors)

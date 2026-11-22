@@ -19,6 +19,14 @@ class RegisterForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['contact_number'].widget = forms.TextInput(attrs={
+            'class': 'form-control',
+            'type': 'tel',
+            'autocomplete': 'tel',
+            'inputmode': 'numeric',
+            'pattern': '[0-9]+',
+            'placeholder': 'Digits only',
+        })
         for name in ['first_name', 'last_name', 'email', 'community']:
             self.fields[name].required = True
         for name, field in self.fields.items():
@@ -82,6 +90,14 @@ class ProfileForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['contact_number'].widget = forms.TextInput(attrs={
+            'class': 'form-control',
+            'type': 'tel',
+            'autocomplete': 'tel',
+            'inputmode': 'numeric',
+            'pattern': '[0-9]+',
+            'placeholder': 'Digits only',
+        })
         for name in ['first_name', 'last_name', 'email', 'community']:
             self.fields[name].required = True
         for name, field in self.fields.items():

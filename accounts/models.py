@@ -1,4 +1,5 @@
 from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.core.validators import RegexValidator
 from django.db import models
 
 
@@ -38,7 +39,13 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='member')
     user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='both')
-    contact_number = models.CharField(max_length=20, blank=True)
+    contact_number = models.CharField(
+        max_length=20,
+        validators=[RegexValidator(
+            regex=r'^[0-9]+$',
+            message='Enter a valid contact number using digits only.',
+        )],
+    )
     community = models.ForeignKey(Community, on_delete=models.PROTECT, related_name='residents')
     profile_photo = models.ImageField(upload_to='profiles/', blank=True, null=True)
     avg_rating = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True)
