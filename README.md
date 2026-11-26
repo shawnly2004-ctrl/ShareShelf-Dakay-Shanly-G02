@@ -56,12 +56,14 @@ The SDD's lender/borrower/both role is implemented as `user_type`. The separate 
    ```
    SECRET_KEY=your-secret-key
    DEBUG=True
+   ALLOWED_HOSTS=127.0.0.1,localhost
    DB_NAME=postgres
    DB_USER=your-supabase-user
    DB_PASSWORD=your-supabase-password
    DB_HOST=your-supabase-pooler-host
    DB_PORT=5432
    ```
+   When deploying, set `ALLOWED_HOSTS` to the hostnames serving the application.
 5. Run migrations and create an admin account
    ```bash
    python manage.py migrate
