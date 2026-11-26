@@ -52,16 +52,11 @@ The SDD's lender/borrower/both role is implemented as `user_type`. The separate 
    ```bash
    pip install -r requirements.txt
    ```
-4. Create a `.env` file in the project root (this file is not in the repo):
+4. Copy `.env.example` to `.env` in the project root, then replace the placeholder values with your private Django and Supabase credentials. PowerShell:
+   ```powershell
+   Copy-Item .env.example .env
    ```
-   SECRET_KEY=your-secret-key
-   DEBUG=True
-   DB_NAME=postgres
-   DB_USER=your-supabase-user
-   DB_PASSWORD=your-supabase-password
-   DB_HOST=your-supabase-pooler-host
-   DB_PORT=5432
-   ```
+   Keep `DEBUG=True` only for local development. `.env` is ignored by Git; never commit or share it.
 5. Run migrations and create an admin account
    ```bash
    python manage.py migrate
