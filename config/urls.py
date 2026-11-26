@@ -7,8 +7,10 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('accounts.urls')),
     path('', include('items.urls')),
-    
 ]
+
+handler404 = 'config.views.custom_404_view'
+handler500 = 'config.views.custom_500_view'
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
