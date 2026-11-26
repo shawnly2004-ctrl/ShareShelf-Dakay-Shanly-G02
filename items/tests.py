@@ -1,8 +1,9 @@
 from datetime import timedelta
-from io import BytesIO
+from io import BytesIO, StringIO
 from tempfile import TemporaryDirectory
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
@@ -457,6 +458,43 @@ class BorrowRequestTests(TestCase):
         self.assertTrue(Item.objects.filter(pk=self.item.pk).exists())
         blocking.refresh_from_db()
         self.assertEqual(blocking.status, 'approved')
+
+    def test_expire_borrow_requests_command_expires_only_stale_pending_once(self):
+        stale = self.make_request()
+        future = self.make_request(
+            borrower=self.create_user('future-request@example.com', 'borrower'),
+        )
+        approved = self.make_request(
+            borrower=self.create_user('approved-request@example.com', 'borrower'),
+            status='approved',
+        )
+        BorrowRequest.objects.filter(pk__in=[stale.pk, approved.pk]).update(
+            expires_at=timezone.now() - timedelta(seconds=1),
+        )
+
+        output = StringIO()
+        call_command('expire_borrow_requests', stdout=output)
+        call_command('expire_borrow_requests', stdout=output)
+
+        stale.refresh_from_db()
+        future.refresh_from_db()
+        approved.refresh_from_db()
+        self.assertEqual(stale.status, 'expired')
+        self.assertEqual(future.status, 'pending')
+        self.assertEqual(approved.status, 'approved')
+        self.assertEqual(
+            Notification.objects.filter(request=stale, notif_type='request_expired').count(),
+            2,
+        )
+        self.assertEqual(
+            Notification.objects.filter(notif_type='request_expired').count(),
+            2,
+        )
+        self.assertEqual(
+            output.getvalue().count('Expired 1 stale borrow request(s).'),
+            1,
+        )
+        self.assertIn('Expired 0 stale borrow request(s).', output.getvalue())
 
     def test_owner_cannot_unlist_item_with_approved_request(self):
         approved = self.make_request(status='approved')

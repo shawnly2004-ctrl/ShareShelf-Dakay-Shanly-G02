@@ -68,6 +68,24 @@ The SDD's lender/borrower/both role is implemented as `user_type`. The separate 
    ```
    Open http://127.0.0.1:8000/
 
+## Scheduled request expiry
+
+The app also expires stale requests when users visit request-related pages. To expire them
+without waiting for a page visit, configure the host's scheduler to run this command every
+5 minutes from the project root:
+
+```powershell
+python manage.py expire_borrow_requests
+```
+
+For Windows Task Scheduler, use the virtual environment's `python.exe`, set the argument
+to `manage.py expire_borrow_requests`, and set **Start in** to the project root. On a
+Linux host, a cron entry can run the same command:
+
+```cron
+*/5 * * * * cd /path/to/ShareShelf && /path/to/venv/bin/python manage.py expire_borrow_requests
+```
+
 ## Notes
 
 - Credentials are stored in `.env`, which is excluded from version control.
