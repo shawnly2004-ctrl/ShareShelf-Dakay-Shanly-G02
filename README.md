@@ -52,6 +52,11 @@ The SDD's lender/borrower/both role is implemented as `user_type`. The separate 
    ```bash
    pip install -r requirements.txt
    ```
+4. Copy `.env.example` to `.env` in the project root, then replace the placeholder values with your private Django and Supabase credentials. PowerShell:
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+   Keep `DEBUG=True` only for local development. `.env` is ignored by Git; never commit or share it.
 4. Create a `.env` file in the project root (this file is not in the repo):
    ```
    SECRET_KEY=your-secret-key
