@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.db.models import F, Q
 from django.utils import timezone
 
@@ -156,13 +156,14 @@ class BorrowRequest(models.Model):
             expires_at__lt=timezone.now(),
         ).select_related('item', 'borrower', 'item__owner'))
         for borrow_request in stale_requests:
-            borrow_request.status = 'expired'
-            borrow_request.save(update_fields=['status'])
-            Notification.create_for_participants(
-                borrow_request,
-                'request_expired',
-                f'The request for "{borrow_request.item.name}" has expired.',
-            )
+            with transaction.atomic():
+                borrow_request.status = 'expired'
+                borrow_request.save(update_fields=['status'])
+                Notification.create_for_participants(
+                    borrow_request,
+                    'request_expired',
+                    f'The request for "{borrow_request.item.name}" has expired.',
+                )
         return len(stale_requests)
 
     @classmethod
@@ -173,14 +174,15 @@ class BorrowRequest(models.Model):
             end_date__lt=today,
         ).select_related('item', 'borrower', 'item__owner'))
         for borrow_request in overdue_requests:
-            borrow_request.status = 'overdue'
-            borrow_request.save(update_fields=['status'])
-            Notification.create_for_user(
-                borrow_request.borrower,
-                borrow_request,
-                'overdue',
-                f'The return for "{borrow_request.item.name}" is overdue.',
-            )
+            with transaction.atomic():
+                borrow_request.status = 'overdue'
+                borrow_request.save(update_fields=['status'])
+                Notification.create_for_user(
+                    borrow_request.borrower,
+                    borrow_request,
+                    'overdue',
+                    f'The return for "{borrow_request.item.name}" is overdue.',
+                )
         return len(overdue_requests)
 
 
@@ -252,6 +254,7 @@ class Rating(models.Model):
     def __str__(self):
         return f"{self.rater.email} rated {self.ratee.email}: {self.score}/5"
 
+    @transaction.atomic
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         from django.db.models import Avg

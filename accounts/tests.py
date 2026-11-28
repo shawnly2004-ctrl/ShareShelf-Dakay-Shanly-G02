@@ -2,7 +2,9 @@ from datetime import timedelta
 
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import get_resolver, include, path, reverse
 from django.utils import timezone
 
@@ -198,6 +200,7 @@ class SDDAccountFeatureTests(TestCase):
         self.assertEqual(user.community_id, self.community.pk)
         self.assertIn(user.language_pref, ('en', 'fil'))
 
+
     def test_contact_number_required_and_digits_only_in_registration_and_profile(self):
         registration_data = {
             'first_name': 'Test',
@@ -255,3 +258,39 @@ class SDDAccountFeatureTests(TestCase):
         profile_data['contact_number'] = '09178888888'
         form = ProfileForm(data=profile_data, instance=user)
         self.assertTrue(form.is_valid(), form.errors)
+
+
+class ManageUsersQueryTests(TestCase):
+    def setUp(self):
+        from .models import Community
+
+        self.community = Community.objects.create(
+            name='Manage Users Community',
+            barangay='Manage Users Barangay',
+            city='Cebu City',
+        )
+        admin = get_user_model().objects.create_user(
+            email='manage-users-admin@example.com',
+            password='test-password',
+            role='admin',
+            community=self.community,
+        )
+        for index in range(3):
+            get_user_model().objects.create_user(
+                email=f'manage-users-{index}@example.com',
+                password='test-password',
+                community=self.community,
+            )
+        self.client.force_login(admin)
+
+    def test_manage_users_joins_community_for_barangay_column(self):
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(reverse('manage_users'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Manage Users Barangay')
+        self.assertTrue(any(
+            'JOIN' in query['sql'].upper()
+            and 'ACCOUNTS_COMMUNITY' in query['sql'].upper()
+            for query in queries.captured_queries
+        ))

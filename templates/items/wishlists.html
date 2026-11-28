@@ -44,7 +44,8 @@
               {% csrf_token %}
               <button class="btn btn-sm btn-outline-primary">{% if entry.is_active %}Deactivate{% else %}Activate{% endif %}</button>
             </form>
-            <form method="post" action="{% url 'wishlist_delete' entry.pk %}">
+            <form method="post" action="{% url 'wishlist_delete' entry.pk %}"
+                  onsubmit="return confirm('Delete this wishlist entry?');">
               {% csrf_token %}
               <button class="btn btn-sm btn-outline-danger">Delete</button>
             </form>
