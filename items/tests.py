@@ -1,10 +1,12 @@
 from datetime import timedelta
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.urls.resolvers import RegexPattern, URLResolver
@@ -458,6 +460,96 @@ class BorrowRequestTests(TestCase):
         self.assertEqual(overlapping.status, 'declined')
         self.assertIsNotNone(overlapping.decided_at)
 
+    def test_request_creation_and_notifications_are_atomic(self):
+        self.client.force_login(self.borrower)
+        start = self.windows[0][0]
+
+        with patch(
+            'items.views.Notification.create_for_participants',
+            side_effect=RuntimeError('notification storage failed'),
+        ):
+            with self.assertRaises(RuntimeError):
+                self.client.post(reverse('request_create', args=[self.item.pk]), {
+                    'start_date': start.isoformat(),
+                    'end_date': (start + timedelta(days=2)).isoformat(),
+                    'message': 'For a home project',
+                })
+
+        self.assertFalse(BorrowRequest.objects.filter(
+            item=self.item,
+            borrower=self.borrower,
+        ).exists())
+
+    def test_expiry_and_overdue_updates_are_atomic_with_notifications(self):
+        stale = self.make_request()
+        stale.expires_at = timezone.now() - timedelta(minutes=1)
+        stale.save(update_fields=['expires_at'])
+
+        with patch(
+            'items.models.Notification.create_for_participants',
+            side_effect=RuntimeError('notification storage failed'),
+        ):
+            with self.assertRaises(RuntimeError):
+                BorrowRequest.expire_stale()
+
+        stale.refresh_from_db()
+        self.assertEqual(stale.status, 'pending')
+
+        overdue = self.make_request(
+            start=timezone.localdate() - timedelta(days=3),
+            end=timezone.localdate() - timedelta(days=1),
+            status='borrowed',
+        )
+        with patch(
+            'items.models.Notification.create_for_user',
+            side_effect=RuntimeError('notification storage failed'),
+        ):
+            with self.assertRaises(RuntimeError):
+                BorrowRequest.mark_overdue()
+
+        overdue.refresh_from_db()
+        self.assertEqual(overdue.status, 'borrowed')
+
+    def test_expire_borrow_requests_command_expires_only_stale_pending_once(self):
+        stale = self.make_request()
+        future = self.make_request(
+            borrower=self.create_user('future-request@example.com', 'borrower'),
+        )
+        approved = self.make_request(
+            borrower=self.create_user('approved-request@example.com', 'borrower'),
+            status='approved',
+        )
+        BorrowRequest.objects.filter(pk__in=[stale.pk, approved.pk]).update(
+            expires_at=timezone.now() - timedelta(seconds=1),
+        )
+
+        output = StringIO()
+        call_command('expire_borrow_requests', stdout=output)
+        call_command('expire_borrow_requests', stdout=output)
+
+        stale.refresh_from_db()
+        future.refresh_from_db()
+        approved.refresh_from_db()
+        self.assertEqual(stale.status, 'expired')
+        self.assertEqual(future.status, 'pending')
+        self.assertEqual(approved.status, 'approved')
+        self.assertEqual(
+            Notification.objects.filter(
+                request=stale,
+                notif_type='request_expired',
+            ).count(),
+            2,
+        )
+        self.assertEqual(
+            Notification.objects.filter(notif_type='request_expired').count(),
+            2,
+        )
+        self.assertEqual(
+            output.getvalue().count('Expired 1 stale borrow request(s).'),
+            1,
+        )
+        self.assertIn('Expired 0 stale borrow request(s).', output.getvalue())
+
     def test_cancellation_expiry_and_delete_blocking(self):
         pending = self.make_request()
         self.client.force_login(self.borrower)
@@ -723,6 +815,27 @@ class RatingTests(TestCase):
             1,
         )
 
+    def test_rating_and_notifications_are_atomic(self):
+        self.client.force_login(self.borrower)
+
+        with patch(
+            'items.views.Notification.create_for_user',
+            side_effect=RuntimeError('notification storage failed'),
+        ):
+            with self.assertRaises(RuntimeError):
+                self.client.post(
+                    reverse('rating_create', args=[self.request.pk]),
+                    {'score': '5', 'review_text': 'Great lender'},
+                )
+
+        self.assertFalse(Rating.objects.filter(
+            request=self.request,
+            rater=self.borrower,
+        ).exists())
+        self.owner.refresh_from_db()
+        self.assertIsNone(self.owner.avg_rating)
+        self.assertEqual(self.owner.rating_count, 0)
+
     def test_owner_and_borrower_can_each_rate_the_other(self):
         self.client.force_login(self.owner)
         self.client.post(
@@ -849,8 +962,10 @@ class NotificationTests(TestCase):
         self.client.force_login(self.owner)
         response = self.client.post(
             reverse('notification_mark_read', args=[notification.pk]),
+            follow=True,
         )
         self.assertRedirects(response, reverse('notifications'))
+        self.assertContains(response, 'Notification marked as read.')
         notification.refresh_from_db()
         self.assertTrue(notification.is_read)
 
@@ -1003,6 +1118,9 @@ class WishlistTests(TestCase):
             keyword='ladder',
             is_active=True,
         )
+
+        response = self.client.get(reverse('wishlists'))
+        self.assertContains(response, "return confirm('Delete this wishlist entry?');")
 
         response = self.client.post(reverse('wishlist_toggle', args=[entry.pk]))
         self.assertRedirects(response, reverse('wishlists'))
