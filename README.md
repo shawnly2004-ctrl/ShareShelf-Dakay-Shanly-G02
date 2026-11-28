@@ -57,18 +57,10 @@ The SDD's lender/borrower/both role is implemented as `user_type`. The separate 
    Copy-Item .env.example .env
    ```
    Keep `DEBUG=True` only for local development. `.env` is ignored by Git; never commit or share it.
-4. Create a `.env` file in the project root (this file is not in the repo):
-   ```
-   SECRET_KEY=your-secret-key
-   DEBUG=True
-   ALLOWED_HOSTS=127.0.0.1,localhost
-   DB_NAME=postgres
-   DB_USER=your-supabase-user
-   DB_PASSWORD=your-supabase-password
-   DB_HOST=your-supabase-pooler-host
-   DB_PORT=5432
-   ```
-   When deploying, set `ALLOWED_HOSTS` to the hostnames serving the application.
+   To view locally stored photos while testing custom error pages with `DEBUG=False`, set
+   `SERVE_MEDIA_FILES=True` in your local `.env`. This option is for local development only;
+   production should serve uploaded media through its web server or a dedicated storage service.
+   For deployment, set `ALLOWED_HOSTS` to the hostnames serving the application.
 5. Run migrations and create an admin account
    ```bash
    python manage.py migrate
