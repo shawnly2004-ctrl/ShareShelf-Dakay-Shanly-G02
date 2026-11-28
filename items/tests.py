@@ -179,6 +179,16 @@ class ItemWorkflowTests(TestCase):
         )
         return item
 
+    def test_my_items_requires_login(self):
+        self.client.logout()
+
+        response = self.client.get(reverse('my_items'))
+
+        self.assertRedirects(
+            response,
+            f"{reverse('login')}?next={reverse('my_items')}",
+        )
+
     def test_create_filter_and_toggle_items(self):
         today = timezone.localdate()
         window_start = today + timedelta(days=1)
