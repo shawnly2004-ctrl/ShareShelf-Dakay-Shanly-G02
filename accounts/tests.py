@@ -2,12 +2,54 @@ from datetime import timedelta
 
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
-from django.test import SimpleTestCase, TestCase
-from django.urls import reverse
+from django.db import connection
+from django.test import SimpleTestCase, TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
+from django.urls import get_resolver, include, path, reverse
 from django.utils import timezone
 
+from config.views import custom_500_view
 from .forms import ProfileForm, RegisterForm
 from .validators import LetterAndNumberValidator
+
+
+def raise_test_server_error(request):
+    raise RuntimeError('Test-only server error')
+
+
+class CustomErrorTestUrlConf:
+    urlpatterns = [
+        path('', include('accounts.urls')),
+        path('trigger-test-server-error/', raise_test_server_error),
+    ]
+    handler500 = custom_500_view
+
+
+@override_settings(DEBUG=False, ALLOWED_HOSTS=['testserver'])
+class Custom404Tests(SimpleTestCase):
+    def test_project_urlconf_registers_custom_500_handler(self):
+        self.assertIs(
+            get_resolver('config.urls').resolve_error_handler('500'),
+            custom_500_view,
+        )
+
+    def test_unknown_url_uses_custom_404_template(self):
+        response = self.client.get('/missing-page-for-404-test/')
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTemplateUsed(response, '404.html')
+        self.assertContains(response, 'Page not found', status_code=404)
+
+    @override_settings(ROOT_URLCONF=CustomErrorTestUrlConf)
+    def test_server_error_uses_custom_500_template_without_exposing_exception(self):
+        self.client.raise_request_exception = False
+
+        response = self.client.get('/trigger-test-server-error/')
+
+        self.assertEqual(response.status_code, 500)
+        self.assertTemplateUsed(response, '500.html')
+        self.assertContains(response, 'Something went wrong', status_code=500)
+        self.assertNotContains(response, 'Test-only server error', status_code=500)
 
 
 class LetterAndNumberValidatorTests(SimpleTestCase):
@@ -158,6 +200,7 @@ class SDDAccountFeatureTests(TestCase):
         self.assertEqual(user.community_id, self.community.pk)
         self.assertIn(user.language_pref, ('en', 'fil'))
 
+
     def test_contact_number_required_and_digits_only_in_registration_and_profile(self):
         registration_data = {
             'first_name': 'Test',
@@ -215,3 +258,39 @@ class SDDAccountFeatureTests(TestCase):
         profile_data['contact_number'] = '09178888888'
         form = ProfileForm(data=profile_data, instance=user)
         self.assertTrue(form.is_valid(), form.errors)
+
+
+class ManageUsersQueryTests(TestCase):
+    def setUp(self):
+        from .models import Community
+
+        self.community = Community.objects.create(
+            name='Manage Users Community',
+            barangay='Manage Users Barangay',
+            city='Cebu City',
+        )
+        admin = get_user_model().objects.create_user(
+            email='manage-users-admin@example.com',
+            password='test-password',
+            role='admin',
+            community=self.community,
+        )
+        for index in range(3):
+            get_user_model().objects.create_user(
+                email=f'manage-users-{index}@example.com',
+                password='test-password',
+                community=self.community,
+            )
+        self.client.force_login(admin)
+
+    def test_manage_users_joins_community_for_barangay_column(self):
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(reverse('manage_users'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Manage Users Barangay')
+        self.assertTrue(any(
+            'JOIN' in query['sql'].upper()
+            and 'ACCOUNTS_COMMUNITY' in query['sql'].upper()
+            for query in queries.captured_queries
+        ))

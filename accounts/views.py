@@ -163,7 +163,9 @@ def profile_edit_view(request):
 @role_required('admin')
 def manage_users_view(request):
     User = get_user_model()
-    users = User.objects.filter(role='member').order_by('-date_joined')
+    users = User.objects.filter(role='member').select_related(
+        'community',
+    ).order_by('-date_joined')
 
     q = request.GET.get('q', '').strip()
     status = request.GET.get('status', '')

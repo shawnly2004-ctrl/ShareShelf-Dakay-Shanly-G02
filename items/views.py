@@ -296,12 +296,13 @@ def request_create_view(request, pk):
             borrow_request = form.save(commit=False)
             borrow_request.item = item
             borrow_request.borrower = request.user
-            borrow_request.save()
-            Notification.create_for_participants(
-                borrow_request,
-                'request_received',
-                f'{request.user.first_name or request.user.email} requested "{item.name}".',
-            )
+            with transaction.atomic():
+                borrow_request.save()
+                Notification.create_for_participants(
+                    borrow_request,
+                    'request_received',
+                    f'{request.user.first_name or request.user.email} requested "{item.name}".',
+                )
             messages.success(
                 request,
                 f'Request sent to {item.owner.first_name} for "{item.name}".',
@@ -447,13 +448,14 @@ def rating_create_view(request, pk):
             rating.request = borrow_request
             rating.rater = request.user
             rating.ratee = ratee
-            rating.save()
-            Notification.create_for_user(
-                ratee,
-                borrow_request,
-                'rating_received',
-                f'You received a {rating.score}-star rating for "{borrow_request.item.name}".',
-            )
+            with transaction.atomic():
+                rating.save()
+                Notification.create_for_user(
+                    ratee,
+                    borrow_request,
+                    'rating_received',
+                    f'You received a {rating.score}-star rating for "{borrow_request.item.name}".',
+                )
             messages.success(request, "Rating submitted successfully.")
             return redirect(destination)
         messages.error(request, "Please fix the errors below.")
@@ -576,6 +578,7 @@ def notification_mark_read_view(request, pk):
     notification = get_object_or_404(Notification, pk=pk, user=request.user)
     notification.is_read = True
     notification.save(update_fields=['is_read'])
+    messages.success(request, "Notification marked as read.")
     return redirect('notifications')
 
 
