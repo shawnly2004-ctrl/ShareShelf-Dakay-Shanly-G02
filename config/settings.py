@@ -20,6 +20,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 DEBUG = os.getenv("DEBUG") == "True"
+SERVE_MEDIA_FILES = os.getenv("SERVE_MEDIA_FILES") == "True"
 
 ALLOWED_HOSTS = [
     host.strip()

@@ -1,11 +1,13 @@
 from datetime import timedelta
 from io import BytesIO
+from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
+from django.urls.resolvers import RegexPattern, URLResolver
 from django.utils import timezone
 from django.utils.datastructures import MultiValueDict
 from PIL import Image
@@ -28,6 +30,7 @@ from .models import (
     Rating,
     Wishlist,
 )
+from config.urls import get_media_urlpatterns
 
 
 def png_upload(name='photo.png', padding_bytes=0):
@@ -39,6 +42,32 @@ def png_upload(name='photo.png', padding_bytes=0):
         content.getvalue() + (b'\0' * padding_bytes),
         content_type='image/png',
     )
+
+
+class LocalMediaServingTests(SimpleTestCase):
+    @override_settings(DEBUG=False, SERVE_MEDIA_FILES=True, MEDIA_URL='/media/')
+    def test_explicit_local_media_setting_serves_files_when_debug_is_disabled(self):
+        with TemporaryDirectory() as media_root:
+            Path(media_root, 'test-image.txt').write_bytes(b'test media')
+            with override_settings(MEDIA_ROOT=media_root):
+                resolver = URLResolver(RegexPattern('^'), get_media_urlpatterns())
+                match = resolver.resolve('media/test-image.txt')
+                response = match.func(
+                    RequestFactory().get('/media/test-image.txt'),
+                    *match.args,
+                    **match.kwargs,
+                )
+                try:
+                    body = b''.join(response.streaming_content)
+                finally:
+                    response.close()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(body, b'test media')
+
+    @override_settings(DEBUG=False, SERVE_MEDIA_FILES=False)
+    def test_local_media_route_is_disabled_by_default_when_debug_is_off(self):
+        self.assertEqual(get_media_urlpatterns(), [])
 
 
 class ItemPhotoFormTests(SimpleTestCase):
